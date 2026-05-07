@@ -93,6 +93,12 @@ async function ensureRootAgentRules(repoRoot, created, updated, existed) {
 			existed.push(`${name} (rubric section)`);
 			continue;
 		}
+		// CLAUDE.md that only delegates to AGENTS.md needs no rubric section —
+		// AGENTS.md is already the authoritative source for this project.
+		if (name === 'CLAUDE.md' && /^@AGENTS\.m[dc]\s*$/i.test(cur.trim())) {
+			existed.push(`${name} (delegates to AGENTS.md)`);
+			continue;
+		}
 		const sep = cur.endsWith('\n\n') ? '' : cur.endsWith('\n') ? '\n' : '\n\n';
 		await writeFile(filePath, cur + sep + ROOT_SNIPPET, 'utf-8');
 		updated.push(name);
