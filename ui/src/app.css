@@ -1,0 +1,139 @@
+:root {
+	--bg: #f1f5f9;
+	--surface: #ffffff;
+	--surface-raised: #f8fafc;
+	--text: #0f172a;
+	--text-muted: #64748b;
+	--text-light: #94a3b8;
+	--border: #e2e8f0;
+	--primary: #0ea5e9;
+	--primary-hover: #0284c7;
+	--primary-subtle: #f0f9ff;
+	--on-primary: #ffffff;
+	--success: #22c55e;
+	--success-subtle: #f0fdf4;
+	--warning: #f59e0b;
+	--warning-subtle: #fffbeb;
+	--danger: #ef4444;
+	--danger-subtle: #fef2f2;
+	--info: #06b6d4;
+	--info-subtle: #ecfeff;
+	--radius: 8px;
+	--radius-lg: 12px;
+	--shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+	--shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.1);
+	--font: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+	--font-mono: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+	--transition: 150ms ease;
+}
+
+@media (prefers-color-scheme: dark) {
+	:root {
+		--bg: #0f1117;
+		--surface: #1a1d27;
+		--surface-raised: #222538;
+		--text: #e2e8f0;
+		--text-muted: #94a3b8;
+		--text-light: #64748b;
+		--border: #2d3148;
+		--primary: #38bdf8;
+		--primary-hover: #0ea5e9;
+		--primary-subtle: #082f49;
+		--on-primary: #ffffff;
+		--success: #4ade80;
+		--success-subtle: #0d2818;
+		--warning: #fbbf24;
+		--warning-subtle: #271d08;
+		--danger: #f87171;
+		--danger-subtle: #2d1010;
+		--info: #22d3ee;
+		--info-subtle: #082830;
+		--shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+		--shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.5);
+	}
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+	font-family: var(--font);
+	background: var(--bg);
+	color: var(--text);
+	line-height: 1.6;
+	-webkit-font-smoothing: antialiased;
+}
+
+a { color: var(--primary); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+button {
+	font-family: inherit;
+	font-size: inherit;
+	color: inherit;
+	cursor: pointer;
+	border: none;
+	background: none;
+}
+
+pre {
+	font-family: var(--font);
+	font-size: 0.875rem;
+	line-height: 1.7;
+	white-space: pre-wrap;
+	word-wrap: break-word;
+}
+
+/* Markdown body styling — used by rendered feature/aspect/run bodies. */
+.md h1, .md h2, .md h3, .md h4 {
+	margin-top: 1.25rem;
+	margin-bottom: 0.5rem;
+	font-weight: 700;
+	line-height: 1.3;
+}
+.md h1 { font-size: 1.4rem; }
+.md h2 { font-size: 1.15rem; }
+.md h3 { font-size: 1rem; }
+.md h4 { font-size: 0.9rem; color: var(--text-muted); }
+.md p { margin-bottom: 0.75rem; }
+.md ul, .md ol { margin: 0.5rem 0 0.75rem 1.5rem; }
+.md li { margin-bottom: 0.25rem; }
+.md code {
+	font-family: var(--font-mono);
+	font-size: 0.85em;
+	background: var(--surface-raised);
+	padding: 0.1em 0.35em;
+	border-radius: 4px;
+}
+.md pre {
+	background: var(--surface-raised);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	padding: 0.75rem 1rem;
+	margin: 0.75rem 0;
+	overflow-x: auto;
+	font-family: var(--font-mono);
+	font-size: 0.85rem;
+	white-space: pre;
+}
+.md pre code {
+	background: transparent;
+	padding: 0;
+}
+.md blockquote {
+	border-left: 3px solid var(--border);
+	padding-left: 1rem;
+	color: var(--text-muted);
+	margin: 0.75rem 0;
+}
+.md table {
+	border-collapse: collapse;
+	margin: 0.75rem 0;
+	width: 100%;
+}
+.md th, .md td {
+	border: 1px solid var(--border);
+	padding: 0.4rem 0.6rem;
+	text-align: left;
+	font-size: 0.875rem;
+}
+.md th { background: var(--surface-raised); font-weight: 600; }

@@ -1,0 +1,11 @@
+{
+	"name": "rubric",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"description": "Specification-backbone runner: pairs a feature inventory with cross-cutting aspect audits.",
+	"scripts": {
+		"run": "node scripts/run.mjs",
+		"init": "node scripts/init.mjs"
+	}
+}

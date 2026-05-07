@@ -1,0 +1,8 @@
+# UI build artifacts
+ui/node_modules/
+ui/dist/
+ui/.svelte-kit/
+
+# OS
+.DS_Store
+Thumbs.db
