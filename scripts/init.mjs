@@ -71,6 +71,34 @@ To activate an aspect, see [\`rubric/agent-rules/add-aspect.md\`](../rubric/agen
 Defaults shipped with rubric are under \`rubric/defaults/aspects/\` — currently: code, unit-tests, help, agent-ux, agent-toolkit, marketing.
 `;
 
+const AGENT_RULE_NAMES = ['AGENTS.md', 'CLAUDE.md'];
+const ROOT_SNIPPET_MARKER = '## Specification (rubric)';
+const ROOT_SNIPPET = `${ROOT_SNIPPET_MARKER}
+
+This project uses [rubric](rubric/) — a feature inventory plus cross-cutting aspect audits.
+Agents manipulating features or aspects: read [rubric/agent-rules/root.md](rubric/agent-rules/root.md) first.
+Features live in [features/](features/); active aspects in [aspects/](aspects/).
+`;
+
+async function ensureRootAgentRules(repoRoot, created, updated, existed) {
+	for (const name of AGENT_RULE_NAMES) {
+		const filePath = join(repoRoot, name);
+		if (!existsSync(filePath)) {
+			await writeFile(filePath, ROOT_SNIPPET, 'utf-8');
+			created.push(name);
+			continue;
+		}
+		const cur = await readFile(filePath, 'utf-8');
+		if (cur.includes(ROOT_SNIPPET_MARKER)) {
+			existed.push(`${name} (rubric section)`);
+			continue;
+		}
+		const sep = cur.endsWith('\n\n') ? '' : cur.endsWith('\n') ? '\n' : '\n\n';
+		await writeFile(filePath, cur + sep + ROOT_SNIPPET, 'utf-8');
+		updated.push(name);
+	}
+}
+
 async function main() {
 	const repoRoot = process.cwd();
 	const created = [];
@@ -132,6 +160,9 @@ async function main() {
 			updated.push('.gitignore');
 		}
 	}
+
+	// AGENTS.md / CLAUDE.md — append a rubric section if not already present
+	await ensureRootAgentRules(repoRoot, created, updated, existed);
 
 	// ── Report ──
 	console.log('rubric init');

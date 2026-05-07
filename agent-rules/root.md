@@ -24,6 +24,6 @@ You are operating inside a project that uses **rubric**, a feature-inventory + c
 - **The inventory is the spine.** Every audit, every gap ticket, every cross-reference uses the feature codes from `features/`. Do not invent codes; do not reuse retired codes.
 - **Rubric does not contain user-facing content.** Marketing copy, help articles, test code, agent skills — those live where they normally live in the project. Rubric only catalogs *what should exist* and verifies *whether it does*.
 - **Use judgement on applicability.** There is no static "this aspect applies to that feature" matrix. The audit agent decides per (aspect, feature) pair whether the aspect applies, and records the verdict.
-- **Gaps become tickets, not edits.** An audit agent does not silently fix gaps. It files a ticket in the project's ticket system following the aspect's `ticket-template`.
+- **Gaps become tickets, not edits.** An audit agent does not silently fix gaps. It files a ticket (in tickets/ for tess) following the aspect's `ticket-template` if there is one.
 - **Run logs are evidence, not deliverables.** The durable artifact is the ticket; logs in `.runs/` are for traceability and may be pruned.
 - **Stay narrow.** Each agent invocation handles one aspect against one batch. Do not pile on adjacent work.
