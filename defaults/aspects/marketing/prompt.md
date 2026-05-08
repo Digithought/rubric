@@ -11,7 +11,7 @@ You are auditing whether each root feature in the batch has public-facing market
 ## Investigation steps
 
 1. Read the feature file's `summary` and `description`.
-2. Locate the project's marketing site source (the project's `add-aspect.md` specifies the path; commonly a `marketing/` or `web/` package, or an external CMS export). Search for the feature name and key capability phrases.
+2. Locate the project's marketing site source. Search for the feature name and key capability phrases.
 3. Skim the feature's positioning. Marketing language is benefit-oriented ("survey faster", "model your site without guesswork") rather than feature-listy.
 
 ## Verdict rules
@@ -20,10 +20,3 @@ You are auditing whether each root feature in the batch has public-facing market
 - **partial** — feature is mentioned but undersold or buried. File a ticket scoped to the upgrade.
 - **gap** — feature has no public-facing marketing presence. File a ticket.
 - **n/a** — feature is internal (admin, ops, engine) or planned and not yet on a roadmap page.
-
-## Gap ticket contents
-
-- The feature code and name.
-- A draft headline and benefit statement (lift from the feature's `summary`).
-- Suggested location on the marketing site.
-- SEO notes: target search phrases drawn from `capabilities:`.
