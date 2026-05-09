@@ -2,6 +2,19 @@
 
 Use this when introducing a new feature to the inventory or modifying an existing one.
 
+## What a feature is
+
+The inventory captures **what** the system does for the user, independent of **how** it is built. The line:
+
+| In | Out |
+|----|-----|
+| What the user can do, see, configure, or be affected by | How the system is built |
+| Backlog and planned features that are documented or scaffolded | Implementation tactics, frameworks, plumbing |
+| User-perceptible system behavior (offline operation, undo, time travel) | Sync protocols, schema mechanics, internal contracts |
+| UI capabilities, kept UX-abstract where possible (pointing vs clicking) | Specific component layouts, framework choices |
+
+Rule of thumb: if removing the underlying tech wouldn't change what the user does or sees, it is architecture — and lives in the project's architecture docs, not in `features/`.
+
 ## Adding a new feature
 
 1. **Choose a code.** 3–5 uppercase letters, mnemonic. Verify it does not collide with any sibling under the same parent. Codes can be reintroduced only if they have *never* been used; retired codes are not reassigned.
@@ -14,7 +27,14 @@ Use this when introducing a new feature to the inventory or modifying an existin
 5. **Update the parent index.**
    - For a new root: append a row to the root index in `features/README.md` under the appropriate group.
    - For a new branch: append a row to the parent's branch listing (in the parent file's body, or its own README if conventions in this project use one).
-6. **Editorial conventions:** timeless prose, no "currently"/"now", no source-code paths, no architecture leakage, UI-agnostic where possible, DRY.
+
+## Editorial conventions
+
+- **Timeless.** No "currently", "now", "recently", "in progress", or other change-history language. The spec describes the desired system at any point in its life.
+- **No source-code references.** Spec language is paths-and-files-free.
+- **No architecture leakage.** Frameworks, libraries, internal protocols, schema mechanics, build systems — none of those names belong in a feature file. The project's architecture docs name them.
+- **UI-agnostic where possible.** Prefer "select an entity" over "click an entity"; prefer "navigate" over "tap arrow." Concrete interaction details belong at deep levels of the tree, not at the root.
+- **DRY.** A capability lives in exactly one feature; cross-references via `related:`.
 
 ## Updating an existing feature
 
@@ -29,7 +49,7 @@ When a feature is added or its capabilities change, the active aspects for the p
 
 ## Don't
 
-- Don't put architecture details (CRDT, modules, contribution points, frameworks) in feature files.
+- Don't put architecture details in feature files.
 - Don't put change-history language ("recently added", "as of v2"). Feature files describe the desired system at any point in time.
 - Don't reuse a retired code.
 - Don't pre-link to nonexistent feature codes in `related:`. Add the cross-reference once both features exist.

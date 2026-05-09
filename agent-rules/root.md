@@ -19,6 +19,34 @@ You are operating inside a project that uses **rubric**, a feature-inventory + c
 | Running an audit of one aspect over a batch of features | [`audit.md`](audit.md) |
 | Orchestrating audits across aspects (scheduling, batching) | [`runner.md`](runner.md) |
 
+## Cross-references — the inventory as a spine
+
+The inventory is the coordinate system other artifacts reference. Two integrations matter:
+
+**Source code** carries `FEATURE: <CODE>` comments at meaningful sites so each implementation is mechanically discoverable from its feature:
+
+```ts
+// FEATURE: SCN-ENT-CMP
+function instantiateComponent(...) { ... }
+```
+
+A single source location may reference multiple features:
+
+```ts
+// FEATURE: INT-SEL, INT-GIZ
+function onPointerDown(...) { ... }
+```
+
+**Tickets** reference features in their front-matter (exact field is project-specific to the ticket system):
+
+```yaml
+features: [SCN-ENT-CMP, INT-INS]
+```
+
+- A ticket that **ships** a feature flips its `status` from `planned` or `partial` toward `implemented`.
+- A ticket that **modifies** a feature is responsible for updating the feature's spec in the same PR.
+- A ticket that **introduces** a new feature adds an entry to `features/` in the same PR.
+
 ## Cardinal rules
 
 - **The inventory is the spine.** Every audit, every gap ticket, every cross-reference uses the feature codes from `features/`. Do not invent codes; do not reuse retired codes.

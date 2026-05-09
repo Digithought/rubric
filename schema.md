@@ -29,15 +29,19 @@ related: [CRD, TER-LYR, INT]   # cross-references to other feature codes (full h
 
 ### File naming
 
-A feature's code and name live in the **filename**, not in front-matter:
+A feature's code and name live in the **filename**, not in front-matter. Branch filenames use the **leaf code only**; the full hyphenated code is implied by the directory path:
 
 ```
-features/<CODE> - <Name>.md                       # root feature
-features/<ROOT-CODE> - <Root Name>/               # branch directory
-    <BRANCH-CODE> - <Branch Name>.md              # branch file uses leaf code only
+features/
+├── README.md                                        ← project root index, group tables, project-specific notes
+├── <CODE> - <Name>.md                               ← one file per root feature
+└── <ROOT-CODE> - <Root Name>/                       ← directory of branch docs (when populated)
+    ├── <BRANCH-CODE> - <Branch Name>.md             ← branch docs use the leaf code only
+    └── <BRANCH-CODE> - <Branch Name>/               ← deeper levels nest the same way
+        └── <SUB-BRANCH-CODE> - <Sub-Branch Name>.md
 ```
 
-The full hyphenated code is implied by the directory path.
+So `SCN - Scene/HIER - Hierarchy.md` represents the feature whose full code is `SCN-HIER`.
 
 ## Aspect front-matter
 
