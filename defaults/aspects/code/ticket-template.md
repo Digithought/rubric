@@ -9,7 +9,7 @@ aspect: code
 # Code coverage gap — <FEATURE-CODE>
 
 **Feature:** [`<FEATURE-CODE> — <Name>`](../../features/<path>.md)
-**Gap kind:** <no code | missing cross-reference | partial>
+**Gap kind:** <no code | partial>
 
 ## Background
 
@@ -18,12 +18,8 @@ aspect: code
 ## Expected
 
 - Source implementing capabilities: <list relevant capabilities from the feature file>.
-- A `FEATURE: <FEATURE-CODE>` comment at one or more entry points to the implementation.
 
 ## Investigation summary
 
 <Where the audit looked, what it found or didn't, files and identifiers it inspected.>
 
-## TODO
-
-- [ ] <task>

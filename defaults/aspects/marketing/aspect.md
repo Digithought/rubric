@@ -11,4 +11,4 @@ ticket-stage: plan
 
 # Aspect — marketing
 
-Verifies that root-level features have public-facing copy on the marketing site. Operates on roots because marketing pages typically describe whole capability areas, not individual leaves.
+Verifies that root-level features have public-facing content on the marketing site. Operates on roots because marketing pages typically describe whole capability areas, not individual leaves.

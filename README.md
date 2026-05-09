@@ -88,9 +88,6 @@ An aspect is a cross-cutting concern that should be addressed for every (applica
 - **unit-tests**, **ux-tests** — verification at different layers.
 - **help** — in-app help and documentation.
 - **marketing** — public-facing copy and SEO.
-- **agent-ux** — agent's ability to instruct a user through the UI.
-- **agent-toolkit** — agent-callable functions covering the feature.
-- **toolkit** — functions exposed to scripting / Operations.
 - **changelog**, **accessibility**, **telemetry**, **shortcuts**, **pricing-tier** — others as the project demands.
 
 A project activates an aspect by creating `aspects/<name>/` with at least an `aspect.md`. If `prompt.md` is absent, rubric falls back to `rubric/defaults/aspects/<name>/prompt.md`. If no default exists, the project must supply its own prompt. **Aspects are project-specific** — defaults are starting points, not a canon.

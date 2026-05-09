@@ -18,7 +18,7 @@ For each feature in the batch:
    - **covered** — adequate evidence found.
    - **gap** — aspect applies but evidence is missing or insufficient.
    - **partial** — some evidence exists but is incomplete; treat as a gap with a more specific scope.
-4. **For gaps, file a ticket.** Use the aspect's `ticket-template.md` (or default). The ticket goes into `aspects/<name>/aspect.md`'s `ticket-system` and `ticket-stage`. Before filing, search for an open ticket already covering this (feature, aspect) pair to avoid duplicates. The ticket must reference both the feature code(s) and the aspect.
+4. **For gaps, file a ticket.** Use the aspect's `ticket-template.md` (or default). The ticket goes into `aspects/<name>/aspect.md`'s `ticket-system` and `ticket-stage`. Before filing, search for an open ticket already covering this (feature, aspect) pair to avoid duplicates. 
 5. **Record the verdict** in the run log.
 
 ## Run log
@@ -31,7 +31,7 @@ Write a single file `.runs/<ISO-datetime>-<aspect>.md` per audit invocation. For
 
 ## Avoid
 
-- **Do not edit code or content** to fix gaps. Audits surface gaps; remediation is a separate, ticketed activity.
+- **Do not edit code or content** to fix gaps unless instructed. Audits surface gaps; remediation is a separate, ticketed activity.
 - **Do not expand the batch.** Stay within the features given. If you discover an adjacent gap, note it; do not chase it.
 - **Do not file a ticket for `n/a` verdicts.** Just record the reason in the run log.
 - **Do not duplicate tickets.** A grep through the open ticket queue for the feature code + aspect name is usually sufficient.
