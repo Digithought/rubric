@@ -18,7 +18,7 @@ const AGENT_ADAPTERS = {
 		buildArgs(promptFile) {
 			// `claude -p <prompt>` runs headless; --dangerously-skip-permissions
 			// is required for non-interactive multi-tool agent runs in our setup.
-			return ['-p', `@${promptFile}`, '--dangerously-skip-permissions'];
+			return ['-p', `@${promptFile}`, '--dangerously-skip-permissions', '--no-session-persistence'];
 		},
 		bin: process.platform === 'win32' ? 'claude.cmd' : 'claude',
 	},
