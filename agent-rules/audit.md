@@ -10,7 +10,9 @@ Run a single aspect against a batch of features. You are invoked with: an aspect
 
 ## Procedure
 
-For each feature in the batch:
+First, if your prompt lists **Known blockers this run**, treat them as established — don't re-investigate. Any feature that depends on one gets verdict `blocked (<id>)`, not a gap ticket.
+
+Then, for each feature in the batch:
 
 1. **Decide applicability.** Does this aspect plausibly apply to this feature? Use judgement based on the feature's purpose. If clearly not applicable, record verdict `n/a` with a short reason. Move on.
 2. **Investigate.** Follow the aspect's prompt. Gather evidence. Be specific — note files, function names, page slugs, ticket IDs.
@@ -18,15 +20,25 @@ For each feature in the batch:
    - **covered** — adequate evidence found.
    - **gap** — aspect applies but evidence is missing or insufficient.
    - **partial** — some evidence exists but is incomplete; treat as a gap with a more specific scope.
+   - **blocked** — couldn't audit because a shared blocker got in the way (record the blocker, see below).
 4. **For gaps, file a ticket.** Use the aspect's `ticket-template.md` (or default). The ticket goes into `aspects/<name>/aspect.md`'s `ticket-system` and `ticket-stage`. Before filing, search for an open ticket already covering this (feature, aspect) pair to avoid duplicates. 
 5. **Record the verdict** in the run log.
 
+## Reporting blockers
+
+A **blocker** is a shared condition that would impede *other* audits, not just yours — a dependency down (DB won't init, a backend/service unreachable, build broken), a missing tool, a stale shared artifact.
+
+- **Raise a blocker the moment you observe such a condition — even if you still completed your verdicts.** It is an observation, not a failure report. The runner lifts it from your log to warn later batches and stop the run from wasting cycles on the same wall.
+- Do **not** push through silently, and do **not** file per-feature gap tickets for a shared outage (it's one blocker, not N gaps).
+- Record each in the run-log front-matter `blockers:` list with `id`, `scope` (`global` / `aspect:<name>` / `feature:<CODE>`), `severity` (`blocking` / `degraded`), `summary`, and ideally `detect` (how to know it's still broken) and `resolution-hint`. Schema is in [`schema.md`](../schema.md). If a blocker was already listed under "Known blockers this run", don't re-raise it — just mark affected features `blocked` with its id.
+
 ## Run log
 
-Write a single file `.runs/<ISO-datetime>-<aspect>.md` per audit invocation. Format per [`schema.md`](../schema.md). Include:
+Write a single run log at the path the runner gives you (within the run directory, `.runs/<runId>/<aspect>-batchN.md`). Format per [`schema.md`](../schema.md). Include:
 
-- The aspect, batch, runner identifier, and start/finish times.
-- One verdict line per feature: `covered` / `gap (ticket: <slug>)` / `partial (ticket: <slug>)` / `n/a (<reason>)`.
+- The aspect, batch, runner identifier (`runId`), and start/finish times.
+- A `blockers:` front-matter list (empty if none) — see "Reporting blockers" above.
+- One verdict line per feature: `covered` / `gap (ticket: <slug>)` / `partial (ticket: <slug>)` / `n/a (<reason>)` / `blocked (<blocker-id>)`.
 - Free-form notes for anything that didn't fit neatly — surprising findings, follow-ups, ambiguity.
 
 ## Avoid

@@ -8,6 +8,7 @@
  *              [--max-batches <N>]
  *              [--max-aspects <N>]
  *              [--agent <claude|...>]
+ *              [--resume <runId|last>]
  *              [--dry-run]
  *              [--no-tickets]
  *              [--help]
@@ -30,6 +31,9 @@ Options:
   --max-batches <N>     Cap total batches dispatched. Default: unlimited.
   --max-aspects <N>     Cap aspects considered. Default: unlimited.
   --agent <name>        Agent adapter to invoke. Default: claude.
+  --resume <id|last>    Resume an existing run: skip its done tasks, re-dispatch
+                        pending/failed/interrupted ones and blocked tasks whose
+                        blocker is now resolved. 'last' picks the newest run.
   --dry-run             Print the dispatch plan; do not invoke any agent.
   --no-tickets          (Reserved.) Tell agents not to file gap tickets — only
                         write run logs. (Currently informational; the prompt
@@ -45,6 +49,7 @@ export function parseArgs(argv) {
 		maxBatches: Infinity,
 		maxAspects: Infinity,
 		agent: 'claude',
+		resume: null,
 		dryRun: false,
 		noTickets: false,
 	};
@@ -61,6 +66,7 @@ export function parseArgs(argv) {
 			case '--max-batches': opts.maxBatches = parseInt(consume(argv, ++i, a), 10); break;
 			case '--max-aspects': opts.maxAspects = parseInt(consume(argv, ++i, a), 10); break;
 			case '--agent': opts.agent = consume(argv, ++i, a); break;
+			case '--resume': opts.resume = consume(argv, ++i, a); break;
 			case '--dry-run': opts.dryRun = true; break;
 			case '--no-tickets': opts.noTickets = true; break;
 			default:

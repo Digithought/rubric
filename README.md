@@ -77,7 +77,10 @@ Rubric ships as a directory you drop into a project (eventually a submodule). On
 │       ├── aspect.md        # config (level, batch, cadence)
 │       ├── prompt.md        # optional override of rubric default
 │       └── ticket-template.md  # optional override
-└── .runs/                   # rubric run logs (gitignored by default)
+└── .runs/                   # rubric runs (gitignored by default)
+    └── <runId>/             # one directory per orchestration pass
+        ├── manifest.md      # the run's checklist + blocker blackboard (runner-owned)
+        └── <aspect>-batchN.md   # per-batch run logs (agent-owned)
 ```
 
 ## Aspects
@@ -94,9 +97,13 @@ A project activates an aspect by creating `aspects/<name>/` with at least an `as
 
 ## Audits
 
-An audit runs one aspect against a batch of features. It is performed by an AI agent reading the aspect's prompt and the relevant feature .md files, then investigating the project to determine, per feature: **covered**, **gap**, or **n/a**. Gaps are converted to tickets in the project's ticket system (e.g., tess). Verdicts and reasoning land in `.runs/` for traceability.
+An audit runs one aspect against a batch of features. It is performed by an AI agent reading the aspect's prompt and the relevant feature .md files, then investigating the project to determine, per feature: **covered**, **gap**, **n/a**, or **blocked**. Gaps are converted to tickets in the project's ticket system (e.g., tess). Verdicts and reasoning land in the run's directory under `.runs/` for traceability.
 
 The audit agent uses **judgement** to decide whether an aspect applies to a given feature — there is no static applicability matrix.
+
+## Runs
+
+Each orchestration pass is a **run**, identified by a `runId` and homed in `.runs/<runId>/`. The runner records the plan as a `manifest.md` — a per-task checklist plus a **blocker blackboard** — and is its sole writer. When an audit agent reports a shared blocker (a dependency down, a broken build), the runner injects it into later batches' prompts and, for run-wide blockers, stops dispatching so subsequent agents don't waste cycles rediscovering the same wall. Interrupted or partial runs resume with `--resume <runId|last>`, which skips completed tasks. See [`agent-rules/runner.md`](agent-rules/runner.md) and the run-manifest schema in [`schema.md`](schema.md).
 
 ## Cadence
 
@@ -119,6 +126,7 @@ node rubric/scripts/init.mjs                       # idempotent scaffold
 node rubric/scripts/run.mjs --help                 # full options
 node rubric/scripts/run.mjs --aspect code --dry-run
 node rubric/scripts/run.mjs --cadence weekly       # all aspects with that cadence
+node rubric/scripts/run.mjs --resume last          # pick up an interrupted run
 ```
 
 **UI** (Svelte 5 + Vite, in `rubric/ui/`). Browse features, inspect aspect configs and resolved prompts, view run logs, and read the coverage matrix at a glance.

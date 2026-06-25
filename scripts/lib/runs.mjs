@@ -9,7 +9,8 @@ import { readdir, readFile } from 'node:fs/promises';
 import { join, basename } from 'node:path';
 import { parseFrontmatter } from './frontmatter.mjs';
 
-const VERDICT_RE = /^\s*-\s+([A-Za-z0-9-]+)\s+—\s+(covered|gap|partial|n\/a)\b\s*(\(([^)]*)\))?\s*(.*)$/;
+// Tolerate optional `code`/**code** markdown wrappers around the feature code.
+const VERDICT_RE = /^\s*-\s+[*`]*([A-Za-z0-9-]+)[*`]*\s+—\s+(covered|gap|partial|n\/a|blocked)\b\s*(\(([^)]*)\))?\s*(.*)$/;
 
 /** List run-log files, newest first. */
 export async function listRuns(runsDir) {
@@ -34,9 +35,21 @@ export async function readRun(path) {
 		started: data.started ?? null,
 		finished: data.finished ?? null,
 		batch: data.batch ?? [],
+		blockers: data.blockers ?? [],
 		verdicts,
+		verdictCounts: countVerdicts(verdicts),
 		body,
 	};
+}
+
+/** Tally a verdict list into manifest-shaped counts. */
+export function countVerdicts(verdicts) {
+	const counts = { covered: 0, gap: 0, partial: 0, na: 0, blocked: 0 };
+	for (const v of verdicts) {
+		const key = v.verdict === 'n/a' ? 'na' : v.verdict;
+		if (key in counts) counts[key]++;
+	}
+	return counts;
 }
 
 function parseVerdicts(body) {

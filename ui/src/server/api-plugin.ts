@@ -1,6 +1,6 @@
 import type { Plugin } from 'vite';
 import { readdir, readFile, access, stat } from 'node:fs/promises';
-import { join, basename, relative, sep } from 'node:path';
+import { join, relative, sep } from 'node:path';
 import { constants } from 'node:fs';
 import type { ServerResponse } from 'node:http';
 
@@ -386,17 +386,18 @@ export interface RunSummary {
 	finished?: string;
 	batch: string[];
 	runner?: string;
-	tally: { covered: number; gap: number; partial: number; na: number; other: number };
+	tally: { covered: number; gap: number; partial: number; na: number; blocked: number; other: number };
 }
 
 // Parse a run log body to extract per-feature verdicts.
 // Schema is loose: looking for lines under "## Verdicts" of form
 // `- <CODE> — <verdict>; ...` (em dash or hyphen). We accept any of:
 //   `- CODE — covered`, `- CODE - gap`, `- CODE: covered`.
-const VERDICT_RE = /^[-*]\s*([A-Z][A-Z0-9\-]*)\s*[—\-:]\s*([a-zA-Z\/]+)/;
+// Tolerate optional `code`/**code** markdown wrappers around the feature code.
+const VERDICT_RE = /^[-*]\s*[`*]*([A-Z][A-Z0-9\-]*)[`*]*\s*[—\-:]\s*([a-zA-Z\/]+)/;
 
 function parseRunVerdicts(body: string): { codes: string[]; tally: RunSummary['tally']; verdicts: Array<{ code: string; verdict: string; line: string }> } {
-	const tally = { covered: 0, gap: 0, partial: 0, na: 0, other: 0 };
+	const tally = { covered: 0, gap: 0, partial: 0, na: 0, blocked: 0, other: 0 };
 	const codes: string[] = [];
 	const verdicts: Array<{ code: string; verdict: string; line: string }> = [];
 
@@ -420,18 +421,42 @@ function parseRunVerdicts(body: string): { codes: string[]; tally: RunSummary['t
 		else if (verdictRaw === 'gap') tally.gap++;
 		else if (verdictRaw === 'partial') tally.partial++;
 		else if (verdictRaw === 'n' || verdictRaw === 'na' || verdictRaw === 'n/a') tally.na++;
+		else if (verdictRaw === 'blocked') tally.blocked++;
 		else tally.other++;
 	}
 	return { codes, tally, verdicts };
 }
 
+/**
+ * Collect run-log files. A run is now a directory `.runs/<runId>/` holding
+ * per-batch `*.md` logs plus a `manifest.md`; legacy flat `.runs/*.md` logs are
+ * still picked up. The manifest itself is not a verdict log, so it's excluded
+ * here. Returned `filename` is a forward-slash relative path under runsDir.
+ */
+async function collectRunLogs(runsDir: string): Promise<string[]> {
+	const out: string[] = [];
+	const entries = await readdir(runsDir, { withFileTypes: true });
+	for (const e of entries) {
+		if (e.isFile() && e.name.endsWith('.md') && e.name !== 'README.md') {
+			out.push(e.name);
+		} else if (e.isDirectory()) {
+			const inner = await readdir(join(runsDir, e.name), { withFileTypes: true });
+			for (const f of inner) {
+				if (f.isFile() && f.name.endsWith('.md') && f.name !== 'manifest.md') {
+					out.push(`${e.name}/${f.name}`);
+				}
+			}
+		}
+	}
+	return out;
+}
+
 async function listRuns(opts: ApiOptions): Promise<RunSummary[]> {
 	if (!await isDir(opts.runsDir)) return [];
-	const entries = await readdir(opts.runsDir, { withFileTypes: true });
+	const files = await collectRunLogs(opts.runsDir);
 	const out: RunSummary[] = [];
-	for (const e of entries) {
-		if (!e.isFile() || !e.name.endsWith('.md')) continue;
-		const raw = await readFile(join(opts.runsDir, e.name), 'utf-8');
+	for (const filename of files) {
+		const raw = await readFile(join(opts.runsDir, filename), 'utf-8');
 		const { meta, body } = parseFrontmatter(raw);
 		const { tally } = parseRunVerdicts(body);
 		const batch = Array.isArray(meta.batch)
@@ -440,7 +465,7 @@ async function listRuns(opts: ApiOptions): Promise<RunSummary[]> {
 				? [meta.batch]
 				: [];
 		out.push({
-			filename: e.name,
+			filename,
 			aspect: typeof meta.aspect === 'string' ? meta.aspect : 'unknown',
 			started: typeof meta.started === 'string' ? meta.started : undefined,
 			finished: typeof meta.finished === 'string' ? meta.finished : undefined,
@@ -455,8 +480,10 @@ async function listRuns(opts: ApiOptions): Promise<RunSummary[]> {
 }
 
 async function getRunDetail(opts: ApiOptions, filename: string) {
-	if (filename.includes('/') || filename.includes('\\') || filename.includes('..')) return null;
-	const path = join(opts.runsDir, filename);
+	// Allow a single safe subdirectory segment (the run dir); block traversal.
+	const segs = filename.split('/');
+	if (segs.length > 2 || filename.includes('\\') || segs.some(s => s === '..' || s === '')) return null;
+	const path = join(opts.runsDir, ...segs);
 	if (!await pathExists(path)) return null;
 	const raw = await readFile(path, 'utf-8');
 	const { meta, body } = parseFrontmatter(raw);
@@ -561,7 +588,7 @@ export function rubricApi(opts: ApiOptions): Plugin {
 						return json(res, await listRuns(opts));
 					}
 
-					m = path.match(/^\/api\/runs\/([^/]+)$/);
+					m = path.match(/^\/api\/runs\/(.+)$/);
 					if (m) {
 						const detail = await getRunDetail(opts, decodeURIComponent(m[1]));
 						if (!detail) return json(res, { error: 'Run not found' }, 404);

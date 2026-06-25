@@ -19,6 +19,7 @@ export function buildAuditPrompt({
 	runLogPath,      // absolute
 	runId,
 	runStartedAt,
+	knownBlockers = [],   // open blockers from earlier batches this run
 }) {
 	const aspectName = aspect.name;
 	const ticketSystem = aspect.data['ticket-system'] || 'tess';
@@ -26,6 +27,10 @@ export function buildAuditPrompt({
 	const featureList = features
 		.map(f => `- ${f.code} — ${f.name}  (${rel(f.path, repoRoot)})`)
 		.join('\n');
+
+	const blockerSection = knownBlockers.length
+		? `\n## Known blockers this run\n\nEarlier batches in this run reported shared conditions that may impede your audit. **Do not re-investigate them.** If a feature you're auditing depends on one of these, mark it \`blocked\` in your verdicts (don't file a gap ticket) and move on:\n\n${knownBlockers.map(b => `- **${b.id}** (${b.scope}, ${b.severity}) — ${b.summary}${b.detect ? ` _(detect: ${b.detect})_` : ''}`).join('\n')}\n`
+		: '';
 
 	const tplSection = ticketTemplateBody
 		? `\n## Gap-ticket template\n\nFile gap tickets that match the structure of this template, filling in placeholders. Save each ticket as a new file under \`tickets/${ticketStage}/<aspect>-<feature-slug>.md\`. Before creating, search the existing tickets directory for an open ticket with the same (feature, aspect) pair and skip duplicates.\n\n\`\`\`\n${ticketTemplateBody.trim()}\n\`\`\`\n`
@@ -44,7 +49,7 @@ ${aspectPromptBody.trim()}
 ${featureList}
 
 Each feature's full spec is in the listed file. Read the front-matter (\`status\`, \`summary\`, \`description\`, \`capabilities\`, \`related\`) and the body before deciding.
-${tplSection}
+${blockerSection}${tplSection}
 ## Run log
 
 When finished, write a single run log file at:
@@ -61,6 +66,7 @@ started: ${runStartedAt}
 finished: <ISO-datetime when you finish>
 batch:
 ${features.map(f => `  - ${f.code}`).join('\n')}
+blockers: []   # see "Reporting blockers" below; leave [] if none
 ---
 \`\`\`
 
@@ -71,7 +77,28 @@ Below the front-matter, include:
    - \`<CODE> — gap (ticket: <relative-path>)\`
    - \`<CODE> — partial (ticket: <relative-path>)\` and the scope of the partial
    - \`<CODE> — n/a (<short reason>)\`
+   - \`<CODE> — blocked (<blocker-id>)\` — couldn't audit it because of a shared blocker (see below)
 2. A \`## Notes\` section for free-form observations, surprises, follow-ups, or features you couldn't confidently judge.
+
+## Reporting blockers
+
+A **blocker** is a shared condition that would impede *other* audits, not just yours — a dependency down (DB won't init, a backend/service unreachable, build broken), a missing tool, a stale shared artifact. The runner lifts these from your run log to warn later batches and, for global blocking ones, to stop wasting cycles.
+
+- **Raise a blocker the moment you observe such a condition — even if you still finished your verdicts.** It is an observation, not a failure report.
+- Do **not** push through silently, and do **not** file per-feature gap tickets for it (a shared outage is one blocker, not N gaps).
+- Record each in the run-log front-matter \`blockers:\` list:
+
+\`\`\`yaml
+blockers:
+  - id: env/db-down                # short stable slug: <area>/<thing>
+    scope: global                  # global | aspect:${aspectName} | feature:<CODE>
+    severity: blocking             # blocking (couldn't validate) | degraded (validated, lower confidence)
+    summary: Quereus in-memory init throws on startup
+    detect: how to know it is still broken
+    resolution-hint: what would clear it
+\`\`\`
+
+If a blocker is already listed under "Known blockers this run", don't re-raise it — just mark affected features \`blocked\` with its id.
 
 ## Constraints
 
