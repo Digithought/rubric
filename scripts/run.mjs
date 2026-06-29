@@ -239,7 +239,10 @@ async function dispatchLoop({ opts, runsDir, repoRoot, manifest, descriptors, st
 		if (!shouldDispatch(manifest, d, staleSet)) continue;
 
 		// Short-circuit: a confirmed global+blocking blocker halts the whole run.
-		const halt = haltingBlocker(manifest, staleSet);
+		// --keep-going suppresses the halt (blocker is still recorded + injected
+		// into later prompts) so a known, already-ticketed blocker can't stop the
+		// sweep.
+		const halt = opts.keepGoing ? null : haltingBlocker(manifest, staleSet);
 		if (halt) {
 			for (const rest of descriptors) {
 				if (shouldDispatch(manifest, rest, staleSet)) {
@@ -252,7 +255,8 @@ async function dispatchLoop({ opts, runsDir, repoRoot, manifest, descriptors, st
 		}
 
 		// Aspect/feature-scoped blocker → skip this one task without dispatching.
-		const scoped = taskBlockedBy(manifest, manifest.tasks.find(t => t.id === d.id), staleSet);
+		// --keep-going dispatches it anyway (the agent is warned via knownBlockers).
+		const scoped = opts.keepGoing ? null : taskBlockedBy(manifest, manifest.tasks.find(t => t.id === d.id), staleSet);
 		if (scoped) {
 			setTaskStatus(manifest, d.id, 'blocked', { 'blocked-by': scoped.id });
 			await writeManifest(runsDir, manifest);

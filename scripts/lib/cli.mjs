@@ -38,6 +38,13 @@ Options:
   --no-tickets          (Reserved.) Tell agents not to file gap tickets — only
                         write run logs. (Currently informational; the prompt
                         tells the agent.)
+  --keep-going          Do not halt the run on a global blocking blocker, and
+                        do not skip aspect/feature-scoped blocked tasks. Blockers
+                        are still recorded + injected into later prompts, but
+                        every task is dispatched. Use when a known, already-
+                        ticketed blocker (e.g. an upstream dependency under
+                        active repair) should not stop the rest of the sweep.
+                        Alias: --no-halt.
   -h, --help            This message.
 `;
 
@@ -52,6 +59,7 @@ export function parseArgs(argv) {
 		resume: null,
 		dryRun: false,
 		noTickets: false,
+		keepGoing: false,
 	};
 	for (let i = 0; i < argv.length; i++) {
 		const a = argv[i];
@@ -69,6 +77,8 @@ export function parseArgs(argv) {
 			case '--resume': opts.resume = consume(argv, ++i, a); break;
 			case '--dry-run': opts.dryRun = true; break;
 			case '--no-tickets': opts.noTickets = true; break;
+			case '--keep-going':
+			case '--no-halt': opts.keepGoing = true; break;
 			default:
 				console.error(`Unknown option: ${a}`);
 				console.error(HELP);
