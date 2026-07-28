@@ -23,7 +23,7 @@
 
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 
 import { parseArgs } from './lib/cli.mjs';
@@ -33,6 +33,9 @@ import { batchFeatures } from './lib/batch.mjs';
 import { buildAuditPrompt } from './lib/prompt.mjs';
 import { runAgent } from './lib/agent.mjs';
 import { readRun } from './lib/runs.mjs';
+import { gitHead, commitsTouching } from './lib/git.mjs';
+import { readLedger, writeLedger, upsertRecord, hashFeatureFile, hashAspectConfig } from './lib/ledger.mjs';
+import { computeFreshness, resolveStaleness, isStale } from './lib/freshness.mjs';
 import {
 	createManifest, runDir, writeManifest, readManifest, resolveRunId,
 	setTaskStatus, mergeBlockers, openBlockers, haltingBlocker, blockersForTask, taskBlockedBy,
@@ -56,7 +59,7 @@ async function main() {
 	const allFeatures = await walkFeatures(featuresDir);
 
 	if (opts.resume) {
-		await resume(opts, { runsDir, repoRoot, allAspects, allFeatures });
+		await resume(opts, { aspectsDir, runsDir, repoRoot, allAspects, allFeatures });
 		return;
 	}
 	await freshRun(opts, { aspectsDir, runsDir, repoRoot, allAspects, allFeatures, defaultsDir });
@@ -65,7 +68,7 @@ async function main() {
 // ── Fresh run: discover, plan, manifest, dispatch ────────────────────────────
 
 async function freshRun(opts, ctx) {
-	const { runsDir, repoRoot, allAspects, allFeatures } = ctx;
+	const { aspectsDir, runsDir, repoRoot, allAspects, allFeatures } = ctx;
 
 	if (allAspects.length === 0) {
 		console.log(`No aspects activated. Create a folder under aspects/<name>/ with an aspect.md to activate one.`);
@@ -103,8 +106,17 @@ async function freshRun(opts, ctx) {
 			const set = new Set(opts.features);
 			features = features.filter(f => set.has(f.code));
 		}
+		// --stale-only: keep only pairs whose ledger record is missing or stale,
+		// most-churned first. Fresh pairs are pruned before batching.
+		if (opts.staleOnly && features.length) {
+			const before = features.length;
+			features = await narrowToStale(features, aspect, { aspectsDir, repoRoot });
+			const pruned = before - features.length;
+			if (pruned) console.log(`  ${aspect.name}: pruned ${pruned} fresh, ${features.length} stale/missing to audit`);
+		}
 		if (features.length === 0) {
-			plan.push({ aspect, batches: [], skipped: 'no features match level/applies-to/--features' });
+			const why = opts.staleOnly ? 'nothing stale (all fresh) or no features match' : 'no features match level/applies-to/--features';
+			plan.push({ aspect, batches: [], skipped: why });
 			continue;
 		}
 		const batches = batchFeatures(features, aspect.data.batch || 8);
@@ -167,13 +179,13 @@ async function freshRun(opts, ctx) {
 	await writeManifest(runsDir, manifest);
 	console.log(`\nrun: ${runId}  (manifest: ${rel(join(runDir(runsDir, runId), 'manifest.md'), repoRoot)})`);
 
-	await dispatchLoop({ opts, runsDir, repoRoot, manifest, descriptors, staleSet: new Set() });
+	await dispatchLoop({ opts, aspectsDir, runsDir, repoRoot, manifest, descriptors, staleSet: new Set() });
 }
 
 // ── Resume: replay a prior run from its manifest ─────────────────────────────
 
 async function resume(opts, ctx) {
-	const { runsDir, repoRoot, allAspects, allFeatures } = ctx;
+	const { aspectsDir, runsDir, repoRoot, allAspects, allFeatures } = ctx;
 	const runId = await resolveRunId(runsDir, opts.resume);
 	if (!runId) { console.error(`No resumable run found for "${opts.resume}".`); process.exit(1); }
 	const manifest = await readManifest(runsDir, runId);
@@ -211,7 +223,7 @@ async function resume(opts, ctx) {
 		}
 		return;
 	}
-	await dispatchLoop({ opts, runsDir, repoRoot, manifest, descriptors, staleSet });
+	await dispatchLoop({ opts, aspectsDir, runsDir, repoRoot, manifest, descriptors, staleSet });
 }
 
 // ── Shared dispatch loop + state machine ─────────────────────────────────────
@@ -230,9 +242,10 @@ function shouldDispatch(manifest, descriptor, staleSet) {
 	return true;
 }
 
-async function dispatchLoop({ opts, runsDir, repoRoot, manifest, descriptors, staleSet }) {
+async function dispatchLoop({ opts, aspectsDir, runsDir, repoRoot, manifest, descriptors, staleSet }) {
 	const dir = runDir(runsDir, manifest.run);
 	const promptCache = new Map();   // aspect.name → { prompt, tpl }
+	const ledgerCache = new Map();   // aspect.name → { ledger, aspectHash, snapshot }
 	let failuresWithoutBlocker = 0;
 
 	for (const d of descriptors) {
@@ -338,6 +351,23 @@ async function dispatchLoop({ opts, runsDir, repoRoot, manifest, descriptors, st
 			}
 		}
 		await writeManifest(runsDir, manifest);
+
+		// Lift verdicts + evidence into the aspect's durable coverage ledger. A
+		// blocked verdict leaves any prior record untouched (the audit didn't run).
+		if (reported.verdicts?.length) {
+			try {
+				await updateLedger({
+					aspectsDir, repoRoot,
+					aspect: d.aspect, features: d.features, reported,
+					runId: manifest.run, finishedAt,
+					promptBody: aspectPromptBody, ticketTemplateBody,
+					ledgerCache,
+				});
+			} catch (e) {
+				console.error(`  ledger update failed for ${d.aspect.name}: ${e.message}`);
+			}
+		}
+
 		console.log(`  ${ok ? '✓ done' : '✗ ' + (result.timedOut ? 'idle timeout' : `exit ${result.exitCode}`)} in ${secs}s`
 			+ (added.length ? `  · raised blocker(s): ${added.join(', ')}` : '')
 			+ `  — log: ${rel(logFile, repoRoot)}`);
@@ -355,6 +385,95 @@ async function dispatchLoop({ opts, runsDir, repoRoot, manifest, descriptors, st
 	if (incomplete > 0) {
 		console.log(`Resume with:  node rubric/scripts/run.mjs --resume ${manifest.run}`);
 	}
+}
+
+// ── Coverage ledger ──────────────────────────────────────────────────────────
+
+/**
+ * Lift a batch's non-blocked verdicts + evidence into the aspect's coverage
+ * ledger, upserting one record per feature. The ledger (and its aspect-hash) is
+ * cached per aspect across batches so we hash the config once and rewrite the
+ * file after each of the aspect's batches. `pinned` is preserved from any prior
+ * record; a `blocked` verdict is skipped so it never clobbers a real audit.
+ */
+async function updateLedger({ aspectsDir, repoRoot, aspect, features, reported, runId, finishedAt, promptBody, ticketTemplateBody, ledgerCache }) {
+	let entry = ledgerCache.get(aspect.name);
+	if (!entry) {
+		entry = {
+			ledger: await readLedger(aspectsDir, aspect.name),
+			aspectHash: await resolveAspectHash(aspect, promptBody, ticketTemplateBody),
+			snapshot: {},
+		};
+		ledgerCache.set(aspect.name, entry);
+	}
+	const { ledger, aspectHash, snapshot } = entry;
+	const head = gitHead(repoRoot);
+	const byCode = new Map(features.map(f => [f.code, f]));
+
+	for (const v of reported.verdicts) {
+		if (v.verdict === 'blocked') continue;    // audit didn't run — leave prior record
+		const feat = byCode.get(v.code);
+		if (!feat) continue;                        // code not in this batch (invented / mistyped)
+		let featureHash = null;
+		try { featureHash = hashFeatureFile(feat.path); } catch { /* unreadable */ }
+		const existing = ledger.records[v.code];
+		upsertRecord(ledger, v.code, {
+			verdict: v.verdict,
+			audited: finishedAt,
+			'audited-commit': head,
+			'feature-hash': featureHash,
+			'aspect-hash': aspectHash,
+			evidence: reported.evidence?.[v.code] ?? [],
+			run: runId,
+			ticket: parseTicketPath(v.note),
+			pinned: existing?.pinned === true,
+		});
+		snapshot[v.code] = { freshness: 'fresh', drift: 0 };   // just audited → fresh at write time
+	}
+	await writeLedger(aspectsDir, aspect.name, ledger, snapshot);
+}
+
+/** Hash the resolved aspect config (aspect.md raw + effective prompt + template). */
+async function resolveAspectHash(aspect, promptBody, ticketTemplateBody) {
+	let aspectMdRaw = '';
+	try { aspectMdRaw = await readFile(aspect.path, 'utf-8'); } catch { /* ignore */ }
+	return hashAspectConfig({ aspectMdRaw, promptBody, ticketTemplateBody });
+}
+
+/** Pull a ticket path out of a verdict note like `gap (ticket: tickets/plan/x.md)`. */
+function parseTicketPath(note) {
+	if (!note) return null;
+	const m = String(note).match(/ticket:\s*([^\s)]+)/i);
+	return m ? m[1] : null;
+}
+
+/**
+ * Narrow a feature list to pairs whose ledger record is missing or stale, ordered
+ * most-churned-first. Freshness is derived here (never stored) from the record's
+ * hashes + drift over its evidence. NB: this is unrelated to the runner's
+ * `staleSet` (unverified blockers) — different axis, deliberately different names.
+ */
+async function narrowToStale(features, aspect, { aspectsDir, repoRoot }) {
+	const ledger = await readLedger(aspectsDir, aspect.name);
+	const staleness = resolveStaleness(aspect.data);
+	let promptBody = '';
+	try { promptBody = await readPrompt(aspect); } catch { /* no prompt resolvable */ }
+	const ticketTemplateBody = await readTicketTemplate(aspect).catch(() => null);
+	const aspectHash = await resolveAspectHash(aspect, promptBody, ticketTemplateBody);
+
+	const scored = [];
+	for (const feat of features) {
+		const record = ledger.records[feat.code] ?? null;
+		let featureHash = null;
+		try { featureHash = hashFeatureFile(feat.path); } catch { /* ignore */ }
+		const drift = record
+			? commitsTouching(repoRoot, record['audited-commit'], record.evidence || [])
+			: null;
+		const fresh = computeFreshness(record, { featureHash, aspectHash, staleness, drift });
+		if (isStale(fresh.state)) scored.push({ feat, priority: fresh.priority });
+	}
+	scored.sort((a, b) => b.priority - a.priority);
+	return scored.map(s => s.feat);
 }
 
 function rel(absPath, repoRoot) {

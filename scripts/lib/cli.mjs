@@ -34,6 +34,10 @@ Options:
   --resume <id|last>    Resume an existing run: skip its done tasks, re-dispatch
                         pending/failed/interrupted ones and blocked tasks whose
                         blocker is now resolved. 'last' picks the newest run.
+  --stale-only          Audit only pairs whose coverage-ledger record is missing
+                        or stale (by hash / drift / age), most-churned first.
+                        Fresh pairs are pruned. Seeds nothing on its own — run a
+                        full sweep first, then --stale-only on cadence.
   --dry-run             Print the dispatch plan; do not invoke any agent.
   --no-tickets          (Reserved.) Tell agents not to file gap tickets — only
                         write run logs. (Currently informational; the prompt
@@ -57,6 +61,7 @@ export function parseArgs(argv) {
 		maxAspects: Infinity,
 		agent: 'claude',
 		resume: null,
+		staleOnly: false,
 		dryRun: false,
 		noTickets: false,
 		keepGoing: false,
@@ -75,6 +80,7 @@ export function parseArgs(argv) {
 			case '--max-aspects': opts.maxAspects = parseInt(consume(argv, ++i, a), 10); break;
 			case '--agent': opts.agent = consume(argv, ++i, a); break;
 			case '--resume': opts.resume = consume(argv, ++i, a); break;
+			case '--stale-only': opts.staleOnly = true; break;
 			case '--dry-run': opts.dryRun = true; break;
 			case '--no-tickets': opts.noTickets = true; break;
 			case '--keep-going':

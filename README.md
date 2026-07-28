@@ -74,9 +74,10 @@ Rubric ships as a directory you drop into a project (eventually a submodule). On
 │   └── <CODE> - <Name>.md
 ├── aspects/                 # per-project active aspects (folder = active)
 │   └── <name>/
-│       ├── aspect.md        # config (level, batch, cadence)
+│       ├── aspect.md        # config (level, batch, cadence, staleness)
 │       ├── prompt.md        # optional override of rubric default
-│       └── ticket-template.md  # optional override
+│       ├── ticket-template.md  # optional override
+│       └── coverage.md      # durable coverage ledger (committed) — verdicts + freshness fingerprints
 └── .runs/                   # rubric runs (gitignored by default)
     └── <runId>/             # one directory per orchestration pass
         ├── manifest.md      # the run's checklist + blocker blackboard (runner-owned)
@@ -105,6 +106,20 @@ The audit agent uses **judgement** to decide whether an aspect applies to a give
 
 Each orchestration pass is a **run**, identified by a `runId` and homed in `.runs/<runId>/`. The runner records the plan as a `manifest.md` — a per-task checklist plus a **blocker blackboard** — and is its sole writer. When an audit agent reports a shared blocker (a dependency down, a broken build), the runner injects it into later batches' prompts and, for run-wide blockers, stops dispatching so subsequent agents don't waste cycles rediscovering the same wall. Interrupted or partial runs resume with `--resume <runId|last>`, which skips completed tasks. See [`agent-rules/runner.md`](agent-rules/runner.md) and the run-manifest schema in [`schema.md`](schema.md).
 
+## Coverage & staleness
+
+Run logs and manifests are ephemeral. The durable record of *what has been audited, when, and whether it still holds* is the **coverage ledger** — one committed file per aspect, `aspects/<name>/coverage.md`. Each audit verdict is stored with three fingerprints: a hash of the feature spec, a hash of the aspect's audit config, and the git commit + evidence paths the audit inspected.
+
+From those, rubric derives a **freshness** state per `(feature, aspect)` pair without ever storing it — `fresh`, `spec-stale` (feature edited), `criteria-stale` (audit rules changed), `drift-stale` (a commit touched the evidence), `age-stale` (an optional wall-clock backstop), or `missing`. Crucially, staleness tracks **repository activity over the audited paths, not the calendar** — a quiet repo keeps its audits fresh indefinitely; a feature whose code is churning goes stale fast. Each aspect tunes this via a `staleness:` block (drift threshold, optional max-age, spec/criteria sensitivity); see [`schema.md`](schema.md).
+
+```
+node rubric/scripts/coverage.mjs                    # freshness matrix across all aspects
+node rubric/scripts/coverage.mjs --aspect code --stale   # just the stale/missing pairs
+node rubric/scripts/coverage.mjs pin SCN-ENT-CMP code    # reaffirm without re-auditing
+node rubric/scripts/coverage.mjs accept SCN-HIER code    # keep verdict, rehash to current spec
+node rubric/scripts/run.mjs --stale-only            # re-audit only what drifted, most-churned first
+```
+
 ## Cadence
 
 Each aspect declares one or more cadences:
@@ -126,10 +141,12 @@ node rubric/scripts/init.mjs                       # idempotent scaffold
 node rubric/scripts/run.mjs --help                 # full options
 node rubric/scripts/run.mjs --aspect code --dry-run
 node rubric/scripts/run.mjs --cadence weekly       # all aspects with that cadence
+node rubric/scripts/run.mjs --stale-only           # re-audit only stale/missing pairs
 node rubric/scripts/run.mjs --resume last          # pick up an interrupted run
+node rubric/scripts/coverage.mjs                   # freshness matrix; pin / accept subcommands
 ```
 
-**UI** (Svelte 5 + Vite, in `rubric/ui/`). Browse features, inspect aspect configs and resolved prompts, view run logs, and read the coverage matrix at a glance.
+**UI** (Svelte 5 + Vite, in `rubric/ui/`). Browse features, inspect aspect configs and resolved prompts, view run logs, and read the coverage matrix — color-coded by freshness — at a glance.
 
 ```
 cd rubric/ui && yarn install && yarn dev

@@ -65,6 +65,11 @@ ticket-stage: plan             # stage / queue within the ticket system
 applies-to:                    # optional restriction; default = all features matching `level`
   include: [SCN, INT-SEL]
   exclude: [WEB, ADM]
+staleness:                     # optional; governs when a prior audit is re-run (see below)
+  drift-threshold: 1           # relevant commits since audit before the record is drift-stale
+  max-age: null                # optional wall-clock safety net; null = off (default)
+  on-spec-change: stale        # feature-hash mismatch → stale | ignore
+  on-criteria-change: stale    # aspect-hash mismatch  → stale | ignore
 ---
 ```
 
@@ -90,6 +95,17 @@ An aspect can list multiple cadences; the runner unions them.
 - If `ticket-template.md` is absent, same fallback.
 - If a default doesn't exist for `<extends>`, the project must supply both.
 
+### Staleness
+
+`staleness:` controls when an existing coverage record (see **Coverage-ledger schema**) is considered stale and re-audited by `run.mjs --stale-only`. All keys optional; omitting the block uses the defaults shown above.
+
+- `drift-threshold` (default `1`) — number of commits touching a record's `evidence` paths, since the commit it was audited at, before it goes **drift-stale**. `1` = any relevant change re-audits; raise to tolerate churn.
+- `max-age` (default `null`, off) — a wall-clock backstop. When set (e.g. `180d`, `12w`, `90`), a record older than this is **age-stale** *even if git shows no drift*. Left off, an inactive repo never ages a record out — drift is the primary signal.
+- `on-spec-change` (default `stale`) — when the audited feature file's hash no longer matches, mark **spec-stale**. Set `ignore` for aspects indifferent to spec edits.
+- `on-criteria-change` (default `stale`) — when the resolved aspect config's hash no longer matches, mark **criteria-stale**. Set `ignore` to keep verdicts across prompt tweaks.
+
+Staleness is **derived at read time** by comparing a record's stored hashes and `audited-commit` against the current files and git history — never persisted. See the ledger schema for the state precedence.
+
 ## Run-log schema
 
 Each audit run writes a structured log to its run directory, `.runs/<runId>/<aspect>-batchN.md`:
@@ -114,12 +130,22 @@ blockers: []                   # shared conditions observed; see below
 - INT-SEL — n/a; feature is internal to the editor scaffolding
 - TER-LYR — blocked (env/db-down)
 
+## Evidence
+
+- SCN-ENT-CMP: packages/site-cad/src/lib/modules/component/**, packages/engine/src/binding/evaluator.ts
+- SCN-HIER: packages/site-cad/src/lib/modules/scenario/hierarchy.ts
+- INT-SEL: (none)
+
 ## Notes
 
 Free-form agent reasoning, evidence sketches, follow-ups.
 ```
 
 `blocked (<id>)` is a fifth verdict: the feature couldn't be audited because of a shared blocker.
+
+### Evidence section
+
+The `## Evidence` section records, per feature, the **paths the audit actually inspected** to reach its verdict — one bullet `<CODE>: <comma-separated paths>` (globs allowed, repo-relative, forward slash). It is the input to drift-based staleness: the runner stores these paths in the coverage ledger, and a later run recomputes freshness by asking git whether any commit since the audit touched them. Use `(none)` when there is nothing to inspect (e.g. an `n/a` verdict) — such a record can never go drift-stale. Report only paths you genuinely consulted; over-broad globs cause needless re-audits, too-narrow ones let drift slip through.
 
 ### Blockers in the run log
 
@@ -190,3 +216,65 @@ blockers:
 - **Resolved** by a human editing `resolved:` in the manifest, or implicitly on `--resume`: blockers carried into a resumed run are treated as *unverified* — they still warn later prompts but don't halt until an agent re-confirms one this pass. Resolving a blocker makes its dependent `blocked` tasks eligible again.
 
 Manifests live under `.runs/` and are gitignored by default, like run logs.
+
+## Coverage-ledger schema
+
+Run logs and manifests are ephemeral (`.runs/`, gitignored). The **coverage ledger** is their durable counterpart: one file per aspect, `aspects/<name>/coverage.md`, **committed to git**. It records the latest audit verdict for each `(feature, aspect)` pair plus the fingerprints needed to tell whether that verdict is still trustworthy. The runner is its sole writer, lifting verdicts + evidence from each batch's run log the same way it lifts them into the manifest.
+
+Like the manifest, it is YAML front-matter (machine truth) followed by a regenerated human/UI table.
+
+```yaml
+---
+aspect: code
+generated: 2026-07-27T10:00:00Z     # when the ledger was last rewritten
+records:
+  SCN-ENT-CMP:
+    verdict: covered                # covered | gap | partial | n/a | blocked
+    audited: 2026-06-24T10:35:00Z   # ISO datetime of the audit
+    audited-commit: 3fa9c21         # git HEAD short-sha at audit time
+    feature-hash: a1b2c3d4e5f6      # sha256 of the whole feature .md, 12 hex
+    aspect-hash: 9f8e7d6c5b4a       # sha256 of aspect.md + resolved prompt.md + ticket-template.md
+    evidence:                       # paths the audit inspected (from the run log's Evidence section)
+      - packages/site-cad/src/lib/modules/component/**
+      - packages/engine/src/binding/evaluator.ts
+    run: 2026-06-24T10-30-00Z-12345 # provenance: the runId that produced this record
+    ticket: null                    # relative path to the gap ticket, when verdict is gap/partial
+    pinned: false                   # human reaffirmation; suppresses age/drift staleness until a hash changes
+---
+
+# Coverage — code   (table regenerated on every write)
+| Feature | Verdict | Freshness | Drift | Audited | Ticket |
+| ... |
+```
+
+### Hashes
+
+- **feature-hash** — sha256 of the entire feature `.md` (front-matter included — a `status:` or `capabilities:` edit is a spec change), first 12 hex. Line endings normalized to `\n` before hashing so CRLF churn doesn't trigger false spec-staleness.
+- **aspect-hash** — sha256 of the resolved aspect config: `aspect.md` concatenated with the effective `prompt.md` and `ticket-template.md` (project override or rubric default, whichever the audit would use), first 12 hex. Changing the audit's instructions invalidates prior verdicts.
+
+Neither the tested artifact (code, docs, help pages) nor its size is hashed — impractical and noisy. Drift over `evidence` paths, via git, is what tracks artifact change.
+
+### Freshness — derived, never stored
+
+Computed at read time by `coverage.mjs`, `run.mjs --stale-only`, and the UI, comparing a record against current files + git. Precedence, highest first:
+
+| State | Condition |
+| --- | --- |
+| **missing** | no record for this (feature, aspect) pair |
+| **criteria-stale** | `aspect-hash` ≠ current, and `on-criteria-change: stale` |
+| **spec-stale** | `feature-hash` ≠ current, and `on-spec-change: stale` |
+| **drift-stale** | commits touching `evidence` in `audited-commit..HEAD` ≥ `drift-threshold` |
+| **age-stale** | `max-age` set and exceeded (used as the drift fallback when drift is *unverifiable*) |
+| **fresh** | none of the above |
+
+`pinned: true` suppresses **drift-stale** and **age-stale** (a human vouched for it) but not the hash-based states — a real spec or criteria change still surfaces. The drift commit-count doubles as a **priority signal**: `--stale-only` re-audits the most-churned records first.
+
+**Unverifiable drift** — when `audited-commit` is absent from history (rebase, squash, shallow clone), drift can't be computed. The record falls back to `age-stale` if `max-age` is set, otherwise is surfaced as stale with an `unverifiable` flag rather than silently trusted.
+
+### Lifecycle
+
+- **Written** by the runner after each batch: for every non-blocked verdict it computes the two hashes, captures `audited-commit` (current HEAD) and `evidence` (from the run log), and upserts the record. A `blocked` verdict leaves any prior record untouched (the audit didn't actually run).
+- **Bootstrap** — with no ledger yet, every pair is `missing`; the first full sweep seeds the file. No migration needed.
+- **Manual overrides** (via `coverage.mjs`): `pin` reaffirms a record without re-auditing; `accept` rehashes a record to the current feature/aspect (clearing spec/criteria-staleness) while keeping the verdict — for cosmetic spec edits that don't warrant a re-audit.
+
+The ledger is committed, so audit history travels with the code and shows up in PR diffs — an audited feature whose evidence a PR touches visibly flips to drift-stale in review.

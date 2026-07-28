@@ -22,7 +22,6 @@ export function buildAuditPrompt({
 	knownBlockers = [],   // open blockers from earlier batches this run
 }) {
 	const aspectName = aspect.name;
-	const ticketSystem = aspect.data['ticket-system'] || 'tess';
 	const ticketStage = aspect.data['ticket-stage'] || 'plan';
 	const featureList = features
 		.map(f => `- ${f.code} — ${f.name}  (${rel(f.path, repoRoot)})`)
@@ -78,7 +77,10 @@ Below the front-matter, include:
    - \`<CODE> — partial (ticket: <relative-path>)\` and the scope of the partial
    - \`<CODE> — n/a (<short reason>)\`
    - \`<CODE> — blocked (<blocker-id>)\` — couldn't audit it because of a shared blocker (see below)
-2. A \`## Notes\` section for free-form observations, surprises, follow-ups, or features you couldn't confidently judge.
+2. A \`## Evidence\` section with one bullet per feature recording the **paths you actually inspected** to reach the verdict — the source files, tests, help pages, etc. This drives drift-based staleness: a future run re-audits this pair only when git shows a commit touched one of these paths. Report what you genuinely consulted — over-broad globs force needless re-audits, too-narrow ones let real drift slip through. Use \`(none)\` when there was nothing to inspect (e.g. an \`n/a\` verdict). Form:
+   - \`<CODE>: <comma-separated repo-relative paths, forward slash, globs ok>\`
+   - \`<CODE>: (none)\`
+3. A \`## Notes\` section for free-form observations, surprises, follow-ups, or features you couldn't confidently judge.
 
 ## Reporting blockers
 

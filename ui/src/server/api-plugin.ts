@@ -3,6 +3,13 @@ import { readdir, readFile, access, stat } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';
 import { constants } from 'node:fs';
 import type { ServerResponse } from 'node:http';
+// Coverage-ledger + freshness data layer (already built + verified). Imported so
+// the UI derives freshness from the exact same algorithm the runner uses — no
+// re-implementation (DRY). These live outside `src/`, hence the ../../../ hop.
+import { readLedger, hashFeatureFile, hashAspectConfig } from '../../../scripts/lib/ledger.mjs';
+import { computeFreshness, resolveStaleness } from '../../../scripts/lib/freshness.mjs';
+import { commitsTouching } from '../../../scripts/lib/git.mjs';
+import { parseFrontmatter as parseFmYaml } from '../../../scripts/lib/frontmatter.mjs';
 
 interface ApiOptions {
 	projectRoot: string;
@@ -507,19 +514,102 @@ async function getRunDetail(opts: ApiOptions, filename: string) {
 	};
 }
 
-// Coverage matrix: latest verdict per (feature code, aspect) pair from runs.
-async function buildCoverage(opts: ApiOptions): Promise<Record<string, Record<string, string>>> {
-	const runs = await listRuns(opts);
-	// Iterate oldest-first so newer runs overwrite older.
-	const coverage: Record<string, Record<string, string>> = {};
-	for (const summary of runs.slice().reverse()) {
-		const detail = await getRunDetail(opts, summary.filename);
-		if (!detail) continue;
-		for (const v of detail.verdicts) {
-			coverage[v.code] ??= {};
-			coverage[v.code][detail.aspect] = v.verdict;
+// A single (feature, aspect) coverage cell derived from the ledger + freshness.
+export interface CoverageCell {
+	verdict: string;
+	freshness: string;
+	drift?: number;
+	unverifiable?: boolean;
+	audited?: string;
+	ticket?: string | null;
+	pinned?: boolean;
+}
+
+/**
+ * Coverage matrix derived from the durable **coverage ledgers**
+ * (`aspects/<name>/coverage.md`) rather than ephemeral run logs.
+ *
+ * Per active aspect we read its ledger; for each record we recompute the
+ * current feature-hash + aspect-hash, ask git how many commits touched the
+ * record's evidence since it was audited, then run `computeFreshness` — the same
+ * derivation `run.mjs --stale-only` and `coverage.mjs` use. Pairs with no record
+ * are omitted (the cell renders "missing").
+ *
+ * Resilience: a missing ledger yields an empty record set (all missing); a
+ * non-git tree makes drift `unverifiable` (handled inside `commitsTouching`).
+ * Any per-aspect failure is logged and skipped rather than failing the endpoint.
+ */
+async function buildCoverage(
+	opts: ApiOptions,
+	aspects: AspectSummary[],
+	featureFileByCode: Map<string, string | null>,
+): Promise<Record<string, Record<string, CoverageCell>>> {
+	const coverage: Record<string, Record<string, CoverageCell>> = {};
+
+	// Cache each feature's current hash — one feature may appear under many aspects.
+	const featureHashCache = new Map<string, string | null>();
+	function featureHash(code: string): string | null {
+		if (featureHashCache.has(code)) return featureHashCache.get(code)!;
+		const abs = featureFileByCode.get(code) ?? null;
+		let h: string | null = null;
+		try { if (abs) h = hashFeatureFile(abs); } catch { h = null; }
+		featureHashCache.set(code, h);
+		return h;
+	}
+
+	for (const aspect of aspects) {
+		try {
+			const ledger = await readLedger(opts.aspectsDir, aspect.name);
+			const records = ledger.records || {};
+			if (Object.keys(records).length === 0) continue;
+
+			// Resolve the aspect's staleness policy + config hash once per aspect.
+			const detail = await getAspectDetail(opts, aspect.name);
+			const staleness = resolveStaleness(
+				detail ? parseFmYaml(detail.raw).data : {},
+			);
+			let aspectHash: string | null = null;
+			if (detail) {
+				try {
+					aspectHash = hashAspectConfig({
+						aspectMdRaw: detail.raw,
+						promptBody: detail.prompt.content,
+						ticketTemplateBody: detail.ticketTemplate.content,
+					});
+				} catch { aspectHash = null; }
+			}
+
+			for (const [code, record] of Object.entries(records) as [string, any][]) {
+				if (!record || typeof record !== 'object') continue;
+				const evidence: string[] = Array.isArray(record.evidence) ? record.evidence : [];
+				let drift = { count: 0, unverifiable: false };
+				try {
+					drift = commitsTouching(opts.projectRoot, record['audited-commit'], evidence);
+				} catch { drift = { count: 0, unverifiable: true }; }
+
+				const fresh = computeFreshness(record, {
+					featureHash: featureHash(code),
+					aspectHash,
+					staleness,
+					drift,
+				});
+
+				coverage[code] ??= {};
+				coverage[code][aspect.name] = {
+					verdict: typeof record.verdict === 'string' ? record.verdict : 'unknown',
+					freshness: fresh.state,
+					drift: fresh.drift,
+					unverifiable: fresh.unverifiable || undefined,
+					audited: typeof record.audited === 'string' ? record.audited : undefined,
+					ticket: record.ticket ?? null,
+					pinned: record.pinned === true || undefined,
+				};
+			}
+		} catch (err) {
+			console.error(`[rubric-api] coverage for aspect "${aspect.name}" failed:`, err);
 		}
 	}
+
 	return coverage;
 }
 
@@ -597,14 +687,21 @@ export function rubricApi(opts: ApiOptions): Plugin {
 
 					if (path === '/api/coverage') {
 						const tree = await buildFeatureTree(opts.featuresDir);
-						const features = flattenFeatures(tree).map(n => ({
+						const flat = flattenFeatures(tree);
+						const features = flat.map(n => ({
 							code: n.code,
 							name: n.name,
 							path: n.path,
 							hasFile: n.hasFile,
 						}));
+						// code → absolute feature .md path (null for dir-only nodes),
+						// so buildCoverage can recompute the current feature-hash.
+						const featureFileByCode = new Map<string, string | null>();
+						for (const n of flat) {
+							featureFileByCode.set(n.code, n.hasFile ? resolveFeatureFile(opts.featuresDir, n.path) : null);
+						}
 						const aspects = await listAspects(opts);
-						const matrix = await buildCoverage(opts);
+						const matrix = await buildCoverage(opts, aspects, featureFileByCode);
 						return json(res, { features, aspects, matrix });
 					}
 

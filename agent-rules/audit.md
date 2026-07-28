@@ -23,6 +23,7 @@ Then, for each feature in the batch:
    - **blocked** — couldn't audit because a shared blocker got in the way (record the blocker, see below).
 4. **For gaps, file a ticket.** Use the aspect's `ticket-template.md` (or default). The ticket goes into `aspects/<name>/aspect.md`'s `ticket-system` and `ticket-stage`. Before filing, search for an open ticket already covering this (feature, aspect) pair to avoid duplicates. 
 5. **Record the verdict** in the run log.
+6. **Record the evidence paths.** In the run log's `## Evidence` section, note the paths you actually inspected to reach the verdict — the source files, tests, help pages, etc. These drive drift-based staleness: the runner stores them in the coverage ledger, and a future run re-audits this pair only when git shows a commit touched one of them. Report what you genuinely consulted — over-broad globs force needless re-audits, too-narrow ones let real drift slip through. Use `(none)` when there was nothing to inspect (e.g. an `n/a` verdict).
 
 ## Reporting blockers
 
@@ -39,6 +40,7 @@ Write a single run log at the path the runner gives you (within the run director
 - The aspect, batch, runner identifier (`runId`), and start/finish times.
 - A `blockers:` front-matter list (empty if none) — see "Reporting blockers" above.
 - One verdict line per feature: `covered` / `gap (ticket: <slug>)` / `partial (ticket: <slug>)` / `n/a (<reason>)` / `blocked (<blocker-id>)`.
+- An `## Evidence` section: one bullet `<CODE>: <comma-separated paths>` per feature (globs allowed, repo-relative, forward slash), or `<CODE>: (none)`. Feeds drift-based staleness — see step 6. Schema in [`schema.md`](../schema.md).
 - Free-form notes for anything that didn't fit neatly — surprising findings, follow-ups, ambiguity.
 
 ## Avoid

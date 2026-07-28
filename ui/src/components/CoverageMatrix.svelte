@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { api } from '../lib/api.js';
-	import type { CoverageData } from '../lib/types.js';
+	import type { CoverageData, CoverageCell } from '../lib/types.js';
 	import { verdictColor, verdictBackground } from '../lib/runs.js';
 
 	let data = $state<CoverageData | null>(null);
@@ -20,7 +20,49 @@
 		if (v === 'partial') return '◐';
 		if (v === 'gap') return '✗';
 		if (v === 'na' || v === 'n/a' || v === 'n') return '–';
+		if (v === 'blocked') return '‖';
 		return '?';
+	}
+
+	// Accent hue for a freshness state, composed from existing :root tokens
+	// (no new hex): hash-based staleness → warning, churn-based drift → info,
+	// wall-clock age → muted. `fresh` and `missing` carry no accent.
+	function freshnessAccent(freshness: string | undefined): string {
+		switch (freshness) {
+			case 'criteria-stale':
+			case 'spec-stale':
+				return 'var(--warning)';
+			case 'drift-stale':
+				return 'var(--info)';
+			case 'age-stale':
+				return 'var(--text-muted)';
+			default:
+				return 'transparent'; // fresh / missing / unknown
+		}
+	}
+
+	function cellBg(cell: CoverageCell | undefined): string {
+		if (!cell) return 'transparent';
+		return verdictBackground(cell.verdict);
+	}
+
+	function isStale(cell: CoverageCell | undefined): boolean {
+		return !!cell && cell.freshness !== 'fresh' && cell.freshness !== 'missing';
+	}
+
+	function tooltip(code: string, aspect: string, cell: CoverageCell | undefined): string {
+		if (!cell) return `${code} × ${aspect}\nfreshness: missing (never audited)`;
+		const parts = [
+			`${code} × ${aspect}`,
+			`verdict: ${cell.verdict}`,
+			`freshness: ${cell.freshness}`,
+		];
+		if (typeof cell.drift === 'number') parts.push(`drift: ${cell.drift} commit${cell.drift === 1 ? '' : 's'}`);
+		if (cell.audited) parts.push(`audited: ${cell.audited}`);
+		if (cell.unverifiable) parts.push('drift: unverifiable (rebase/squash/shallow)');
+		if (cell.pinned) parts.push('pinned');
+		if (cell.ticket) parts.push(`ticket: ${cell.ticket}`);
+		return parts.join('\n');
 	}
 
 	function encodePath(p: string): string {
@@ -47,19 +89,31 @@
 		<div class="empty">
 			<p>No active aspects yet.</p>
 			<p class="muted">
-				Coverage is computed from run logs in <code>.runs/</code>. Activate at
-				least one aspect (under <code>aspects/</code>) and run an audit to populate this view.
+				Coverage is derived from the per-aspect ledgers
+				(<code>aspects/&lt;name&gt;/coverage.md</code>). Activate at least one aspect
+				(under <code>aspects/</code>) and run an audit to seed a ledger and populate this view.
 			</p>
 		</div>
 	{:else if data.features.length === 0}
 		<div class="empty">No features in inventory.</div>
 	{:else}
-		<div class="legend">
-			<span class="leg"><span class="sym" style:color="var(--success)">✓</span> covered</span>
-			<span class="leg"><span class="sym" style:color="var(--warning)">◐</span> partial</span>
-			<span class="leg"><span class="sym" style:color="var(--danger)">✗</span> gap</span>
-			<span class="leg"><span class="sym" style:color="var(--text-light)">–</span> n/a</span>
-			<span class="leg"><span class="sym" style:color="var(--text-light)">·</span> never audited</span>
+		<div class="legends">
+			<div class="legend">
+				<span class="leg-label">Verdict</span>
+				<span class="leg"><span class="sym" style:color="var(--success)">✓</span> covered</span>
+				<span class="leg"><span class="sym" style:color="var(--warning)">◐</span> partial</span>
+				<span class="leg"><span class="sym" style:color="var(--danger)">✗</span> gap</span>
+				<span class="leg"><span class="sym" style:color="var(--text-light)">–</span> n/a</span>
+				<span class="leg"><span class="sym" style:color="var(--text-light)">·</span> missing</span>
+			</div>
+			<div class="legend">
+				<span class="leg-label">Freshness</span>
+				<span class="leg"><span class="swatch fresh"></span> fresh</span>
+				<span class="leg"><span class="swatch stale" style:--fresh-accent="var(--warning)"></span> spec / criteria-stale</span>
+				<span class="leg"><span class="swatch stale" style:--fresh-accent="var(--info)"></span> drift-stale</span>
+				<span class="leg"><span class="swatch stale" style:--fresh-accent="var(--text-muted)"></span> age-stale</span>
+				<span class="leg"><span class="swatch missing"></span> missing</span>
+			</div>
 		</div>
 
 		<div class="matrix-wrap">
@@ -89,14 +143,16 @@
 								{/if}
 							</td>
 							{#each data.aspects as a}
-								{@const v = data.matrix[f.code]?.[a.name]}
+								{@const cell = data.matrix[f.code]?.[a.name]}
 								<td
 									class="cell"
-									style:color={v ? verdictColor(v) : 'var(--text-light)'}
-									style:background={v ? verdictBackground(v) : 'transparent'}
-									title={v ? `${f.code} × ${a.name}: ${v}` : `${f.code} × ${a.name}: not audited`}
+									class:stale={isStale(cell)}
+									style:color={cell ? verdictColor(cell.verdict) : 'var(--text-light)'}
+									style:background={cellBg(cell)}
+									style:--fresh-accent={freshnessAccent(cell?.freshness)}
+									title={tooltip(f.code, a.name, cell)}
 								>
-									{symbol(v)}
+									{symbol(cell?.verdict)}
 								</td>
 							{/each}
 						</tr>
@@ -144,16 +200,56 @@
 		border-radius: 4px;
 	}
 
+	.legends {
+		display: flex;
+		flex-direction: column;
+		gap: 0.35rem;
+		margin-bottom: 0.75rem;
+	}
 	.legend {
 		display: flex;
 		gap: 1rem;
 		flex-wrap: wrap;
-		margin-bottom: 0.75rem;
+		align-items: center;
 		font-size: 0.75rem;
 		color: var(--text-muted);
 	}
+	.leg-label {
+		font-weight: 700;
+		color: var(--text-light);
+		text-transform: uppercase;
+		letter-spacing: 0.03em;
+		font-size: 0.65rem;
+		min-width: 4.5rem;
+	}
 	.leg { display: flex; align-items: center; gap: 0.25rem; }
 	.sym { font-size: 1rem; font-weight: 700; }
+
+	/* Freshness legend swatches mirror the in-cell treatment. */
+	.swatch {
+		display: inline-block;
+		width: 1rem;
+		height: 1rem;
+		border-radius: 3px;
+		background: var(--surface-raised);
+		position: relative;
+	}
+	.swatch.fresh { background: var(--success-subtle); }
+	.swatch.missing { background: transparent; border: 1px dotted var(--text-light); }
+	.swatch.stale {
+		outline: 1px dashed var(--fresh-accent);
+		outline-offset: -3px;
+	}
+	.swatch.stale::after {
+		content: '';
+		position: absolute;
+		top: 1px;
+		right: 1px;
+		width: 4px;
+		height: 4px;
+		border-radius: 50%;
+		background: var(--fresh-accent);
+	}
 
 	.matrix-wrap {
 		overflow-x: auto;
@@ -217,5 +313,23 @@
 		font-size: 1.1rem;
 		font-weight: 700;
 		min-width: 3rem;
+		position: relative;
+	}
+	/* Stale cells keep their verdict symbol + tint but gain a dashed accent
+	   border (inset via outline so no layout shift) and a corner dot whose
+	   hue names the stale category. */
+	.cell.stale {
+		outline: 1px dashed var(--fresh-accent);
+		outline-offset: -3px;
+	}
+	.cell.stale::after {
+		content: '';
+		position: absolute;
+		top: 3px;
+		right: 3px;
+		width: 5px;
+		height: 5px;
+		border-radius: 50%;
+		background: var(--fresh-accent);
 	}
 </style>

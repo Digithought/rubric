@@ -11,6 +11,8 @@ import { parseFrontmatter } from './frontmatter.mjs';
 
 // Tolerate optional `code`/**code** markdown wrappers around the feature code.
 const VERDICT_RE = /^\s*-\s+[*`]*([A-Za-z0-9-]+)[*`]*\s+—\s+(covered|gap|partial|n\/a|blocked)\b\s*(\(([^)]*)\))?\s*(.*)$/;
+// Evidence bullet: `- CODE: p1, p2` or `- CODE: (none)`.
+const EVIDENCE_RE = /^\s*-\s+[*`]*([A-Za-z0-9-]+)[*`]*\s*:\s*(.*)$/;
 
 /** List run-log files, newest first. */
 export async function listRuns(runsDir) {
@@ -38,6 +40,7 @@ export async function readRun(path) {
 		blockers: data.blockers ?? [],
 		verdicts,
 		verdictCounts: countVerdicts(verdicts),
+		evidence: parseEvidence(body),
 		body,
 	};
 }
@@ -68,6 +71,29 @@ function parseVerdicts(body) {
 			verdict: m[2].toLowerCase().replace('n/a', 'n/a'),
 			note: (m[4] || m[5] || '').trim(),
 		});
+	}
+	return out;
+}
+
+/**
+ * Parse the `## Evidence` section into a `{ CODE: string[] }` map — the paths the
+ * audit inspected, feeding drift-based staleness. `(none)` (or an empty list) →
+ * `[]`, meaning the record can never go drift-stale.
+ */
+function parseEvidence(body) {
+	const lines = body.split(/\r?\n/);
+	const out = {};
+	let inSection = false;
+	for (const line of lines) {
+		if (/^##\s+evidence\b/i.test(line)) { inSection = true; continue; }
+		if (inSection && /^##\s+/.test(line)) break;
+		if (!inSection) continue;
+		const m = line.match(EVIDENCE_RE);
+		if (!m) continue;
+		const rest = m[2].trim();
+		out[m[1]] = (rest === '' || /^\(none\)$/i.test(rest))
+			? []
+			: rest.split(',').map(s => s.trim()).filter(Boolean);
 	}
 	return out;
 }

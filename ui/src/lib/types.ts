@@ -85,8 +85,20 @@ export interface RunDetail extends RunSummary {
 	raw: string;
 }
 
+// A single (feature, aspect) cell. Present only when a coverage record exists;
+// a missing pair is omitted from the matrix and renders as "missing".
+export interface CoverageCell {
+	verdict: string;              // covered | gap | partial | n/a | blocked
+	freshness: string;           // fresh | criteria-stale | spec-stale | drift-stale | age-stale | missing
+	drift?: number;              // commits touching the record's evidence since audit
+	unverifiable?: boolean;      // drift couldn't be computed (rebase/squash/shallow)
+	audited?: string;            // ISO datetime of the audit
+	ticket?: string | null;      // relative path to the gap ticket, when set
+	pinned?: boolean;            // human reaffirmation
+}
+
 export interface CoverageData {
 	features: Array<{ code: string; name: string; path: string; hasFile: boolean }>;
 	aspects: AspectSummary[];
-	matrix: Record<string, Record<string, string>>; // featureCode -> aspectName -> verdict
+	matrix: Record<string, Record<string, CoverageCell>>; // featureCode -> aspectName -> cell
 }

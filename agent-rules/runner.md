@@ -18,7 +18,7 @@ The runner orchestrates audits across aspects without overflowing any single age
 4. **Open a run.** Allocate a `runId` and create `.runs/<runId>/manifest.md` (schema in [`schema.md`](../schema.md)) listing every batch as a task with status `pending`. This manifest is the run's checklist and blocker blackboard; **the runner is its sole writer.**
 5. **Dispatch audit agents, driving the manifest state machine.** For each task, in order:
    - Set it `running` (regenerate the manifest), then launch one agent per [`audit.md`](audit.md). Pass the aspect name, the batch's feature codes, the `runId`, the target run-log path, and **any open blockers relevant to this task** (global, this aspect, or a feature in the batch) so the agent bails instead of re-investigating a known wall.
-   - When the agent finishes, lift its run-log `## Verdicts` and `blockers:` into the manifest, and set the task `done` or `failed`.
+   - When the agent finishes, lift its run-log `## Verdicts` and `blockers:` into the manifest, and set the task `done` or `failed`. Also lift its `## Verdicts` + `## Evidence` into the aspect's **coverage ledger** (`aspects/<name>/coverage.md`) — see "Coverage ledger" below.
 6. **React to blockers.** Before dispatching each task, check the manifest:
    - A `global` + `blocking` blocker **short-circuits the run** — mark all remaining dispatchable tasks `blocked` and stop. Don't burn an agent per batch to rediscover the same outage.
    - An `aspect:<name>` + `blocking` blocker skips that aspect's remaining tasks the same way.
@@ -26,6 +26,18 @@ The runner orchestrates audits across aspects without overflowing any single age
 7. **Collect artifacts.** Each audit writes its own `.runs/<runId>/<aspect>-batchN.md`. The manifest is the run-level summary; the runner regenerates it on every task transition.
 
 The reference runner (`rubric/scripts/run.mjs`) dispatches **sequentially**, which is what lets a blocker raised by one batch reach the next batch's prompt. If you parallelize (see below), blockers still land in the manifest for resume and the next wave, but can't reach already-running siblings.
+
+## Coverage ledger
+
+Alongside the manifest, the runner maintains a durable, git-committed **coverage ledger** per aspect, `aspects/<name>/coverage.md` (schema in [`schema.md`](../schema.md)). The manifest is the ephemeral per-run blackboard; the ledger is the cumulative record of what has been audited and whether it still holds.
+
+After a batch completes, for each **non-blocked** verdict the runner upserts a ledger record: the verdict, `audited` timestamp, current `audited-commit` (git HEAD), the **feature-hash** and **aspect-hash** (see schema), the **evidence** paths from the run log, the `run` id, and any gap `ticket`. A `blocked` verdict leaves the prior record untouched — the audit didn't actually run. The runner is the sole writer, exactly as with the manifest.
+
+## Stale-only scoping (`--stale-only`)
+
+`run.mjs --stale-only` narrows each aspect's feature set to pairs whose ledger record is **missing** or stale, then batches only those. Freshness is derived (never stored) by comparing each record's stored hashes and `audited-commit` against the current files and git history — the precedence and states are defined in [`schema.md`](../schema.md#coverage-ledger-schema). The dominant signal is **drift**: commits touching a record's evidence paths since it was audited, so a quiet repo re-audits nothing and a churning feature re-audits fast. Records are ordered most-churned-first so the highest-risk pairs run before any batch cap bites.
+
+This is the everyday driver of incremental audits: run a full sweep once to seed the ledger, then `--stale-only` on cadence to keep only what actually moved under review.
 
 ## On-change scoping
 

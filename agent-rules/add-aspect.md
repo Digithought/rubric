@@ -21,7 +21,8 @@ Use this when activating a new aspect for the project.
    - `level: leaf` for fine-grained verification (unit tests, help articles).
    - `batch:` small (4–8) for prompts that need deep investigation; larger (12–24) for shallow checks.
    - Add `on-change` only if the aspect's evidence is colocated with code that triggers commits.
-7. **Update `aspects/README.md`** to list the newly active aspect.
+7. **Tune staleness (optional).** The `staleness:` block governs when `run.mjs --stale-only` re-audits a prior verdict (schema in [`schema.md`](../schema.md)). Defaults (`drift-threshold: 1`, `max-age: null`, spec/criteria changes → stale) suit most aspects: any commit touching a feature's evidence re-audits it, wall-clock is ignored. Raise `drift-threshold` for aspects whose evidence churns cosmetically; set a `max-age` only if you want a time backstop independent of git activity.
+8. **Update `aspects/README.md`** to list the newly active aspect.
 
 ## Don't
 
