@@ -69,6 +69,12 @@ async function walkDir(dir, codeChain, out) {
 
 /**
  * Filter a feature list per an aspect's `level` and `applies-to` config.
+ *
+ * Retired features are dropped unconditionally, the mirror of the
+ * `status === 'retired'` skip in `aspects.mjs`. A retired feature's
+ * implementation was deliberately removed, so every aspect audit finds it
+ * missing and files a gap ticket for work nobody wants — that happened to
+ * DTI-RMD, whose code was deleted on purpose in `d2d2a225b`.
  */
 export function filterFeatures(features, aspect) {
 	const level = aspect.data.level || 'any';
@@ -76,6 +82,7 @@ export function filterFeatures(features, aspect) {
 	const include = applies.include || null;
 	const exclude = applies.exclude || null;
 	return features.filter(f => {
+		if (f.data?.status === 'retired') return false;
 		if (level !== 'any' && f.level !== level) {
 			// `branch` audits cover both `root` and intermediate nodes that have children;
 			// our walker labels actual roots as `root`, so accept `branch` strictly.
