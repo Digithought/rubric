@@ -51,8 +51,13 @@ export function parseYaml(text) {
 		if (!m) { i++; continue; }
 		const key = m[1];
 		const rest = m[2];
-		if (rest === '|') {
-			// Block scalar — collect indented lines verbatim.
+		const blockScalar = rest.match(/^([|>])([-+]?)$/);
+		if (blockScalar) {
+			// Block scalar. `|` keeps line breaks verbatim; `>` folds them (single
+			// breaks become spaces, blank lines become paragraph breaks). Agents
+			// write both styles, and taking a bare `>-` header as the literal value
+			// silently destroyed the field.
+			const style = blockScalar[1];
 			const collected = [];
 			i++;
 			let blockIndent = null;
@@ -65,7 +70,8 @@ export function parseYaml(text) {
 				collected.push(l.slice(blockIndent));
 				i++;
 			}
-			result[key] = collected.join('\n').replace(/\s+$/, '');
+			result[key] = (style === '>' ? foldBlock(collected) : collected.join('\n'))
+				.replace(/\s+$/, '');
 			continue;
 		}
 		if (rest === '') {
@@ -87,6 +93,23 @@ export function parseYaml(text) {
 		i++;
 	}
 	return result;
+}
+
+/**
+ * Fold a `>` block scalar: runs of non-empty lines join with a single space,
+ * a blank line becomes a paragraph break. Close enough to YAML's folded style
+ * for the prose fields rubric uses (summary, detect, resolution-hint).
+ */
+function foldBlock(lines) {
+	const out = [];
+	let para = [];
+	const flush = () => { if (para.length) { out.push(para.join(' ')); para = []; } };
+	for (const l of lines) {
+		if (l.trim() === '') { flush(); out.push(''); continue; }
+		para.push(l.trim());
+	}
+	flush();
+	return out.join('\n').replace(/\n{3,}/g, '\n\n');
 }
 
 function parseChild(lines) {
