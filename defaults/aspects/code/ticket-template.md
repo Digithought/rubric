@@ -8,8 +8,7 @@ aspect: code
 
 # Code coverage gap — <FEATURE-CODE>
 
-**Feature:** [`<FEATURE-CODE> — <Name>`](../../features/<path>.md)
-**Gap kind:** <no code | partial>
+**Feature:** [`<FEATURE-CODE> — <Name>`](../../features/<path>.md) **Gap kind:** <no code | partial>
 
 ## Background
 

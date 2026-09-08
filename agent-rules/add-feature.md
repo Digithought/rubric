@@ -35,6 +35,7 @@ Rule of thumb: if removing the underlying tech wouldn't change what the user doe
 - **No architecture leakage.** Frameworks, libraries, internal protocols, schema mechanics, build systems — none of those names belong in a feature file. The project's architecture docs name them.
 - **UI-agnostic where possible.** Prefer "select an entity" over "click an entity"; prefer "navigate" over "tap arrow." Concrete interaction details belong at deep levels of the tree, not at the root.
 - **DRY.** A capability lives in exactly one feature; cross-references via `related:`.
+- **No hard-wrapping.** One paragraph per line, editors soft-wrap; `yarn unwrap:md <path>` fixes existing files.
 
 ## Updating an existing feature
 
