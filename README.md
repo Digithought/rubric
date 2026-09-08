@@ -8,6 +8,12 @@ Building software produces a collection of artifacts: source code, unit tests, U
 
 It is **not** a place to keep marketing copy, help articles, or test code. Each aspect lives in its own native place. Rubric only catalogs *what should exist* and dispatches agents to verify *whether it does*.
 
+## The model
+
+A rubric project is specified on three orthogonal axes: **features** (what the user gets, in `features/`), **aspects** (manifestations of the feature, in `aspects/`), and **architecture** (how any feature is built, in the project's own docs, organised by concern and naming no feature). Features × aspects is the coverage matrix rubric audits; architecture applies to every cell.
+
+The rules that keep the three from duplicating each other — one home per kind of truth, an anchor on every ticket, the current-release assumption, aspect annotations and surfaces, the enforcement ladder, the testing policy — are in [`agent-rules/principles.md`](agent-rules/principles.md). `init` injects a short version into the project's `AGENTS.md` so every agent knows the shape before it reads anything else.
+
 ## Installation
 
 ### 1. Add rubric to your project

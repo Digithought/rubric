@@ -2,6 +2,10 @@
 
 You are operating inside a project that uses **rubric**, a feature-inventory + cross-cutting-aspects system. Read this file first; it points at the rule you actually need.
 
+## The model
+
+Three orthogonal axes — features (*what*), aspects (*which manifestations*), architecture (*how*) — plus the rules that keep them from duplicating each other: single home per kind of truth, rubric anchors on every ticket, current release assumption, aspect annotations and surfaces, the enforcement ladder, the testing policy. All of it is in [`principles.md`](principles.md). Read that first; everything below assumes it.
+
 ## What rubric is
 
 - `features/` (peer of `rubric/`) holds the **feature inventory** — a hierarchical, timeless functional spec of the project. One `.md` per feature; codes live in filenames; front-matter follows [`schema.md`](../schema.md).
@@ -13,6 +17,7 @@ You are operating inside a project that uses **rubric**, a feature-inventory + c
 
 | You are doing | Read |
 |---|---|
+| Understanding how a rubric project is specified | [`principles.md`](principles.md) |
 | Setting rubric up in a new (or existing) project | [`init.md`](init.md) |
 | Adding or updating a feature in the inventory | [`add-feature.md`](add-feature.md) |
 | Activating a new aspect for the project | [`add-aspect.md`](add-aspect.md) |

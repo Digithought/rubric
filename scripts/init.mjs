@@ -75,10 +75,30 @@ const AGENT_RULE_NAMES = ['AGENTS.md', 'CLAUDE.md'];
 const ROOT_SNIPPET_MARKER = '## Specification (rubric)';
 const ROOT_SNIPPET = `${ROOT_SNIPPET_MARKER}
 
-This project uses [rubric](rubric/) — a feature inventory plus cross-cutting aspect audits.
+This project is specified on three orthogonal axes — [rubric](rubric/) owns the model
+([rubric/agent-rules/principles.md](rubric/agent-rules/principles.md)):
+
+- **Features** (*what* the user gets) — [features/](features/), one file per feature, codes in filenames.
+- **Aspects** (*which manifestations* every applicable feature carries: code, tests, help, …) — [aspects/](aspects/), audited against features; gaps become tickets.
+- **Architecture** (*how* any feature is built) — the project's architecture docs, organised by concern, naming no feature.
+
+Rules that follow from it: each kind of truth has one home (delete a paragraph — if nothing breaks, it was a duplicate);
+every ticket names a feature, aspect or architecture anchor; anything not tagged with a later release is due in the
+current one; a check is enforced at the lowest rung that can express it (type → lint/check → test → dev assert →
+aspect audit → runtime constraint); tests name the spec line they verify.
 Agents manipulating features or aspects: read [rubric/agent-rules/root.md](rubric/agent-rules/root.md) first.
-Features live in [features/](features/); active aspects in [aspects/](aspects/).
 `;
+
+/** Replace the rubric section in place — from its marker to the next `## ` heading or EOF. */
+function replaceSection(content, marker, replacement) {
+	const start = content.indexOf(marker);
+	const rest = content.slice(start + marker.length);
+	const next = rest.search(/\n## /);
+	const end = next === -1 ? content.length : start + marker.length + next + 1;
+	const tail = content.slice(end);
+	const sep = tail.length === 0 || replacement.endsWith('\n\n') ? '' : '\n';
+	return content.slice(0, start) + replacement + sep + tail;
+}
 
 async function ensureRootAgentRules(repoRoot, created, updated, existed) {
 	for (const name of AGENT_RULE_NAMES) {
@@ -90,7 +110,13 @@ async function ensureRootAgentRules(repoRoot, created, updated, existed) {
 		}
 		const cur = await readFile(filePath, 'utf-8');
 		if (cur.includes(ROOT_SNIPPET_MARKER)) {
-			existed.push(`${name} (rubric section)`);
+			const next = replaceSection(cur, ROOT_SNIPPET_MARKER, ROOT_SNIPPET);
+			if (next === cur) {
+				existed.push(`${name} (rubric section)`);
+			} else {
+				await writeFile(filePath, next, 'utf-8');
+				updated.push(`${name} (rubric section refreshed)`);
+			}
 			continue;
 		}
 		// CLAUDE.md that only delegates to AGENTS.md needs no rubric section —
