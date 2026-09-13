@@ -29,7 +29,41 @@ const DIR_RE  = /^([A-Za-z0-9]+)\s+-\s+(.+)$/;
 export async function walkFeatures(featuresDir) {
 	const out = [];
 	await walkDir(featuresDir, [], out);
+	deriveNonLeafStatus(out);
 	return out;
+}
+
+/**
+ * Fill in `data.status` for every root/branch node from its descendant leaves.
+ *
+ * `status` is a leaf-only stored field (see `schema.md` § "`status` is a
+ * leaf-only field"): a branch's status is a pure function of its leaves, so
+ * storing a copy is a second home that drifts — and drifts optimistically,
+ * because the leaf that falsifies it is edited far from the branch file.
+ *
+ * Deriving it here means every consumer — `filterFeatures`' retired-drop
+ * below, the UI badge, any reporting — keeps seeing a status on non-leaves
+ * without one being written down. A non-leaf that still carries a stored
+ * status is left alone rather than overwritten: this walker reports the
+ * inventory, it does not police it, and silently replacing a value would hide
+ * the very drift the rule is about.
+ */
+function deriveNonLeafStatus(features) {
+	const leaves = features.filter(f => f.level === 'leaf');
+	for (const node of features) {
+		if (node.level === 'leaf') continue;
+		if (node.data?.status !== undefined) continue;  // stored value wins; see above
+		const prefix = `${node.code}-`;
+		const kids = leaves.filter(l => l.code.startsWith(prefix)).map(l => l.data?.status);
+		if (kids.length === 0) continue;
+		const live = kids.filter(s => s !== 'retired');
+		let derived;
+		if (live.length === 0) derived = 'retired';
+		else if (live.every(s => s === 'implemented')) derived = 'implemented';
+		else if (live.every(s => s === 'planned')) derived = 'planned';
+		else derived = 'partial';
+		node.data = { ...(node.data ?? {}), status: derived };
+	}
 }
 
 async function walkDir(dir, codeChain, out) {

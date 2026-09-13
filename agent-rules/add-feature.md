@@ -22,7 +22,9 @@ Rule of thumb: if removing the underlying tech wouldn't change what the user doe
    - Root feature: `features/<CODE> - <Name>.md`.
    - Branch under a root: `features/<ROOT-CODE> - <Root Name>/<BRANCH-CODE> - <Branch Name>.md`. Create the directory if it doesn't exist.
    - Deeper levels nest the same way.
-3. **Write the front-matter** per [`schema.md`](../schema.md): `status`, `summary`, `description`, `capabilities`, `related`. Codes in `related:` are full hyphenated forms.
+3. **Write the front-matter** per [`schema.md`](../schema.md): `status`, `summary`, `description`, `capabilities`, `related`. Codes in `related:` are full hyphenated forms. **`status` goes only on files with no descendants** — a root or branch that has children omits it, because its status is derived from its descendant leaves (the table is in `schema.md`). A childless root keeps its `status`: it is a leaf in substance, and nothing exists below it to derive from. Adding one back to a node that has children reintroduces a second home for a fact the leaves already hold.
+
+   Note the consequence when a childless root **gains** its first branch: it stops being the home for `status`, so remove the field from it in the same change that adds the child.
 4. **Add a body** with the heading `# <CODE> — <Name>`. Body text is optional for thin leaves; rich features get prose, sub-headings, and an enumeration of branches when known.
 5. **Update the parent index.**
    - For a new root: append a row to the root index in `features/README.md` under the appropriate group.
@@ -41,7 +43,7 @@ Rule of thumb: if removing the underlying tech wouldn't change what the user doe
 
 - **Display name change:** rename the file. The code segment is preserved. No front-matter edit needed.
 - **Code change:** avoid. If unavoidable, update the file, the index, every `related:` cross-reference, every `FEATURE:` source-code comment, every ticket reference. Prefer adding a new code and retiring the old.
-- **Status change:** update `status:`. Common transition is `planned → partial → implemented`. A retired feature stays in place with `status: retired` and a note explaining the retirement.
+- **Status change:** update `status:` **on the leaf** — ancestors derive theirs, don't edit them by hand. Common transition is `planned → partial → implemented`. A retired feature stays in place with `status: retired` and a note explaining the retirement; retiring a whole branch means retiring each of its leaves.
 - **Capability change:** edit the `capabilities:` list. Added capabilities should be discrete and user-facing.
 
 ## Triggering audits

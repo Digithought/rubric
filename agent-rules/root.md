@@ -22,6 +22,7 @@ Three orthogonal axes — features (*what*), aspects (*which manifestations*), a
 | Adding or updating a feature in the inventory | [`add-feature.md`](add-feature.md) |
 | Activating a new aspect for the project | [`add-aspect.md`](add-aspect.md) |
 | Running an audit of one aspect over a batch of features | [`audit.md`](audit.md) |
+| Reviewing a completed change against the inventory | [`review.md`](review.md) |
 | Orchestrating audits across aspects (scheduling, batching) | [`runner.md`](runner.md) |
 
 ## Cross-references — the inventory as a spine
@@ -51,6 +52,8 @@ features: [SCN-ENT-CMP, INT-INS]
 - A ticket that **ships** a feature flips its `status` from `planned` or `partial` toward `implemented`.
 - A ticket that **modifies** a feature is responsible for updating the feature's spec in the same PR.
 - A ticket that **introduces** a new feature adds an entry to `features/` in the same PR.
+
+None of those three is machine-checkable, so all three are verified at review, along with the anchors the ticket *should* have carried and did not — see [`review.md`](review.md).
 
 ## Cardinal rules
 

@@ -8,7 +8,7 @@ Every feature file (`features/<CODE> - <Name>.md` or nested branch file) carries
 
 ```yaml
 ---
-status: implemented            # implemented | partial | planned | retired
+status: implemented            # CHILDLESS NODES ONLY — implemented | partial | planned | retired
 summary: |                     # 1–2 sentence headline, user-facing
   ...
 description: |                 # 1–3 paragraph functional spec (optional for very small leaves)
@@ -19,6 +19,21 @@ capabilities:                  # discrete user-facing capabilities; bullets agen
 related: [CRD, TER-LYR, INT]   # cross-references to other feature codes (full hyphenated form)
 ---
 ```
+
+### `status` is stored only where nothing can derive it
+
+**A file stores `status` if and only if it has no descendants.** A childless root counts as a leaf and keeps its `status`. A file with descendants derives its status instead, and must not store one:
+
+| Descendant leaves (ignoring `retired`) | Derived status |
+|---|---|
+| none left — every descendant is `retired` | `retired` |
+| all `implemented` | `implemented` |
+| all `planned` | `planned` |
+| anything else | `partial` |
+
+A stored copy on a branch is a second home for the same fact, and nothing updates it when a leaf changes. Measured on SiteCAD before this rule: 22 of 51 branches (43%) claimed a status their own leaves contradicted — all 22 overclaimed, none understated, because the leaf edit that would falsify it happens far from the branch file.
+
+Retiring a branch means retiring its leaves; once every descendant is `retired`, the branch derives `retired` too.
 
 ### Coding scheme
 
