@@ -61,7 +61,8 @@ export function featureInScope(feature, target, list) {
  * `deferred` holds every other capability with the release it is due in — for
  * a valid spec, the later ones.
  *
- * @returns {{ audit: object[], deferred: Array<{ cap: object, code: string|null }>, only: boolean }}
+ * @returns {{ audit: object[], deferred: Array<{ cap: object, code: string }>, only: boolean }}
+ *   A deferred capability ranks above 0, so its own or its feature's tag is set.
  */
 export function capabilityScope(feature, target, list) {
 	if (target.kind === 'all') return { audit: feature.capabilities, deferred: [], only: false };

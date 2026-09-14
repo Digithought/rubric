@@ -34,7 +34,7 @@ export function capabilityScope(
 	feature: Pick<FeatureRecord, 'target' | 'capabilities'>,
 	target: Target,
 	list: Ranked,
-): { audit: Capability[]; deferred: Array<{ cap: Capability; code: string | null }>; only: boolean };
+): { audit: Capability[]; deferred: Array<{ cap: Capability; code: string }>; only: boolean };
 
 export function capabilityDueWithFeature(feature: Pick<FeatureRecord, 'target'>, cap: Pick<Capability, 'target'>, list: Ranked): boolean;
 

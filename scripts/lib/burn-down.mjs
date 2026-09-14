@@ -58,6 +58,7 @@ function childless(candidates, inventory) {
 
 /** A cell that is still work: missing or stale, or holding a verdict that is itself outstanding, however fresh. */
 function openCell(feature, { state, verdict, ticket }) {
+	// NOTE: an `all` run records a verdict over the feature's later capabilities too, so its fresh gap about work deferred to a later release (ticket under tickets/backlog/<CODE>/) counts as open here; if `all` runs are used on a project with a release list, keep them out of the ledger or record which release a gap concerns.
 	if (!isStale(state) && !OPEN_VERDICTS.has(verdict)) return [];
 	return [{ code: feature.code, state, verdict: verdict ?? null, ticket: ticket ?? null }];
 }
