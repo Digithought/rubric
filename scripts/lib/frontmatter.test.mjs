@@ -35,7 +35,11 @@ const FEATURE = [
 const EXPECTED_KEYS = [
 	{ key: 'status', line: 1, end: 1, items: null },
 	{ key: 'summary', line: 2, end: 5, items: null },
-	{ key: 'capabilities', line: 8, end: 14, items: [{ line: 9, end: 9 }, { line: 11, end: 12 }, { line: 14, end: 14 }] },
+	{ key: 'capabilities', line: 8, end: 14, items: [
+		{ line: 9, end: 9, keys: null },
+		{ line: 11, end: 12, keys: [{ key: 'text', line: 11, end: 11 }, { key: 'target', line: 12, end: 12 }] },
+		{ line: 14, end: 14, keys: null },
+	] },
 	{ key: 'aspects', line: 16, end: 18, items: null },
 	{ key: 'related', line: 19, end: 19, items: null },
 ];

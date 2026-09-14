@@ -1,6 +1,10 @@
 // Type surface for ledger.mjs (the .mjs is the source of truth; this only feeds
 // TypeScript importers such as the rubric UI's Vite API plugin).
 
+import type { AspectRecord } from './aspects.mjs';
+import type { FeatureRecord } from './features.mjs';
+import type { ReleaseList } from './releases.mjs';
+
 export const LEDGER_FILE: string;
 
 export interface LedgerRecord {
@@ -35,10 +39,21 @@ export function writeLedger(
 
 export function upsertRecord(ledger: Ledger, code: string, record: LedgerRecord): Ledger;
 
-export function hashFeatureFile(absPath: string): string;
+export function featureFingerprint(input: {
+	raw: string;
+	feature: Pick<FeatureRecord, 'data' | 'surfaces' | 'target'>;
+	aspect: Pick<AspectRecord, 'name' | 'data'>;
+	releases: Pick<ReleaseList, 'codes'>;
+}): string;
+
+export function capabilityDueWithFeature(
+	feature: Pick<FeatureRecord, 'target'>,
+	cap: { target: string | null },
+	releases: Pick<ReleaseList, 'codes'>,
+): boolean;
 
 export function hashAspectConfig(input: {
 	aspectMdRaw?: string;
 	promptBody?: string;
-	ticketTemplateBody?: string;
+	ticketTemplateBody?: string | null;
 }): string;

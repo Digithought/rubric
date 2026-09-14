@@ -53,3 +53,14 @@ function importTessReader(repoRoot) {
 export function releaseRank(list, code) {
 	return code == null ? 0 : list.codes.indexOf(code);
 }
+
+/**
+ * A code's rank for deciding what is due: `releaseRank`, except that an
+ * unlisted code ranks as current. An unlisted tag most likely names a release
+ * tess has just shipped and removed from the list, before rubric has stripped
+ * the tag; validateSpec reports it. With no release list every code is
+ * unlisted, so everything is due now.
+ */
+export function dueRank(list, code) {
+	return Math.max(0, releaseRank(list, code));
+}

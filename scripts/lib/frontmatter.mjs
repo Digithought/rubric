@@ -69,7 +69,9 @@ export function isMapping(value) {
  *   - `keys`: one span per top-level key, in file order. `end` is the last line
  *     the key owns (indented, blank and comment lines; trailing blank lines
  *     excluded). `items` is set for a block list: one span per dash at the
- *     list's own indent, ending on the item's last value line.
+ *     list's own indent, ending on the item's last value line. An item's
+ *     `keys` holds one `{ key, line, end }` per key when the item is a mapping
+ *     (`- text: …`), else null.
  *
  * Spans come from the same segmentation `parseYaml` uses, so a key or item here
  * is exactly what the parser read as one.
@@ -83,7 +85,7 @@ export function scanFrontmatter(raw) {
 	const keys = scanEntries(lines, start, end).map(entry => {
 		const children = entry.kind === 'nested' ? entry.body.map(j => lines[j]) : [];
 		const items = children.length && isBlockList(children)
-			? splitListItems(children).map(group => ({ line: entry.body[group[0]], end: entry.body[group.at(-1)] }))
+			? splitListItems(children).map(group => scanListItem(lines, group.map(k => entry.body[k])))
 			: null;
 		let last = entry.last;
 		while (last > entry.line && isBlank(lines[last])) last--;
@@ -219,24 +221,46 @@ function splitListItems(lines) {
 }
 
 /**
+ * A block-list item's span, from its value lines as indexes into `lines`: the
+ * first and last value line, and for a mapping item one `{ key, line, end }` per
+ * key, segmented from the same block `parseBlockList` parses.
+ */
+function scanListItem(lines, valueLines) {
+	const block = itemBlock(valueLines.map(j => lines[j]));
+	const keys = isMappingItem(block)
+		? scanEntries(block, 0, block.length - 1).map(e => ({ key: e.key, line: valueLines[e.line], end: valueLines[e.last] }))
+		: null;
+	return { line: valueLines[0], end: valueLines.at(-1), keys };
+}
+
+/**
  * Parse a block list whose items may be scalars (`- SCN-HIER`) or mappings
  * (`- id: x` followed by deeper-indented `key: value` lines).
  */
 function parseBlockList(lines) {
-	const items = splitListItems(lines).map(group => group.map(k => lines[k]));
-	// Replace the "- " marker with spaces so the first key aligns with the
-	// item's continuation lines, turning it into a uniform mapping.
-	for (const item of items) item[0] = item[0].replace(/^(\s*)-(\s)/, '$1 $2').replace(/^(\s*)-$/, '$1 ');
-	return items.map(itemLines => {
-		const nonEmpty = itemLines.filter(s => s.trim());
-		if (nonEmpty.length === 0) return null;
-		const minIndent = Math.min(...nonEmpty.map(s => s.match(/^\s*/)[0].length));
-		const dedented = itemLines.map(s => s.slice(minIndent)).join('\n');
-		const head = dedented.trim().split('\n')[0];
-		// A mapping item starts with `key:` (or `key: value`); otherwise scalar.
-		if (!/^[A-Za-z0-9_-]+:(\s|$)/.test(head)) return parseScalar(dedented.trim());
-		return parseYaml(dedented);
+	return splitListItems(lines).map(group => {
+		const block = itemBlock(group.map(k => lines[k]));
+		if (block.every(isBlank)) return null;
+		const text = block.join('\n');
+		return isMappingItem(block) ? parseYaml(text) : parseScalar(text.trim());
 	});
+}
+
+/**
+ * An item's lines as one block at column 0: the "- " marker replaced with
+ * spaces, so the first key aligns with the item's continuation lines, then the
+ * indent common to its non-blank lines removed.
+ */
+function itemBlock(itemLines) {
+	const first = itemLines[0].replace(/^(\s*)-(\s)/, '$1 $2').replace(/^(\s*)-$/, '$1 ');
+	const blanked = [first, ...itemLines.slice(1)];
+	const minIndent = Math.min(...blanked.filter(l => !isBlank(l)).map(indentOf));
+	return blanked.map(l => l.slice(minIndent));
+}
+
+/** A mapping item starts with `key:` (or `key: value`); any other item is a scalar. */
+function isMappingItem(block) {
+	return /^[A-Za-z0-9_-]+:(\s|$)/.test(block.join('\n').trim().split('\n')[0]);
 }
 
 function parseScalar(raw) {
@@ -360,7 +384,7 @@ function emitBlockScalar(pad, key, val) {
 	return `${pad}${key}: |\n${lines.join('\n')}\n`;
 }
 
-function formatScalar(v) {
+export function formatScalar(v) {
 	if (v === null) return 'null';
 	if (typeof v === 'boolean') return v ? 'true' : 'false';
 	if (typeof v === 'number') return String(v);

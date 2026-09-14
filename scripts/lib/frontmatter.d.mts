@@ -15,9 +15,17 @@ export interface FrontmatterSpan {
 	end: number;
 }
 
-export interface FrontmatterKeySpan extends FrontmatterSpan {
+export interface FrontmatterEntrySpan extends FrontmatterSpan {
 	key: string;
-	items: FrontmatterSpan[] | null;
+}
+
+export interface FrontmatterItemSpan extends FrontmatterSpan {
+	/** One span per key when the item is a mapping (`- text: …`), else null. */
+	keys: FrontmatterEntrySpan[] | null;
+}
+
+export interface FrontmatterKeySpan extends FrontmatterEntrySpan {
+	items: FrontmatterItemSpan[] | null;
 }
 
 export interface FrontmatterScan {
@@ -43,3 +51,5 @@ export function parseYaml(text: string): Record<string, any>;
 export function stringifyFrontmatter(data: unknown, body?: string): string;
 
 export function stringifyYaml(obj: unknown, indent?: number): string;
+
+export function formatScalar(value: string | number | boolean | null): string;

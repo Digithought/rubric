@@ -16,10 +16,13 @@
 
 import { join } from 'node:path';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
-import { readFileSync } from 'node:fs';
 import { existsSync } from 'node:fs';
 import { createHash } from 'node:crypto';
+import { resolveAnnotation } from './aspects.mjs';
+import { rewriteFrontmatter } from './feature-text.mjs';
+import { ownSurfaces } from './features.mjs';
 import { parseFrontmatter, stringifyFrontmatter } from './frontmatter.mjs';
+import { dueRank } from './releases.mjs';
 
 export const LEDGER_FILE = 'coverage.md';
 
@@ -69,9 +72,41 @@ export function upsertRecord(ledger, code, record) {
 
 // ── Hashing ──────────────────────────────────────────────────────────────────
 
-/** sha256 (first 12 hex) of a feature file, with CRLF/CR normalized to \n. */
-export function hashFeatureFile(absPath) {
-	return sha12(normalize(readFileSync(absPath, 'utf-8')));
+/**
+ * Top-level keys a feature's fingerprint leaves out: every aspect's settings
+ * block (the audited aspect's resolved settings are appended instead), surfaces
+ * (only their overlap with the aspect's counts) and the release tag (only which
+ * capabilities are in scope counts).
+ */
+const UNFINGERPRINTED_KEYS = new Set(['aspects', 'surfaces', 'target']);
+
+/**
+ * The ledger's `feature-hash`: sha256 (first 12 hex) of a feature file as it
+ * bears on one aspect's audit — schema.md § Hashes. `feature` is the walked
+ * record for the file (`data`, effective `surfaces` and `target`); `releases`
+ * is `readReleaseList`'s result.
+ */
+export function featureFingerprint({ raw, feature, aspect, releases }) {
+	const scoped = rewriteFrontmatter(raw, {
+		dropKeys: UNFINGERPRINTED_KEYS,
+		capability: cap => (capabilityDueWithFeature(feature, cap, releases) ? 'plain' : 'drop'),
+	});
+	let text = normalize(scoped);
+	const annotation = resolveAnnotation(aspect, feature);
+	if (Object.keys(annotation).length) text += `\nrubric-annotation: ${JSON.stringify(annotation)}`;
+	const audited = ownSurfaces(aspect);
+	const shared = audited ? [...new Set(audited.filter(s => feature.surfaces?.includes(s)))].sort() : [];
+	if (shared.length) text += `\nrubric-surfaces: ${JSON.stringify(shared)}`;
+	return sha12(text);
+}
+
+/**
+ * Whether a capability is due with its feature: its own tag ranks no later than
+ * the feature's effective tag, an unlisted code ranking as current (`dueRank`).
+ * A plain capability has no tag of its own, so it always is.
+ */
+export function capabilityDueWithFeature(feature, cap, releases) {
+	return dueRank(releases, cap.target) <= dueRank(releases, feature.target);
 }
 
 /**

@@ -166,13 +166,15 @@ async function walkDir(dir, codeChain, out) {
  */
 function normaliseCapabilities(value, itemLines, keyLine) {
 	if (!Array.isArray(value)) return [];
-	return value.map((item, i) => {
-		const line = itemLines?.[i] ?? keyLine ?? null;
-		if (isMapping(item)) {
-			return { text: typeof item.text === 'string' ? item.text : null, target: item.target ?? null, line };
-		}
-		return { text: typeof item === 'string' ? item : null, target: null, line };
-	});
+	return value.map((item, i) => normaliseCapability(item, itemLines?.[i] ?? keyLine ?? null));
+}
+
+/** One parsed capability item as `{ text, target, line }`; see `normaliseCapabilities`. */
+export function normaliseCapability(item, line) {
+	if (isMapping(item)) {
+		return { text: typeof item.text === 'string' ? item.text : null, target: item.target ?? null, line };
+	}
+	return { text: typeof item === 'string' ? item : null, target: null, line };
 }
 
 /**

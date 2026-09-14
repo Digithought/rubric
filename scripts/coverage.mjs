@@ -18,14 +18,12 @@
 
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { readFile } from 'node:fs/promises';
 
-import { readPrompt, readTicketTemplate } from './lib/aspects.mjs';
 import { filterFeatures, findFeature } from './lib/features.mjs';
 import { exitIfSpecInvalid, loadSpec } from './lib/validate.mjs';
-import { commitsTouching } from './lib/git.mjs';
-import { readLedger, writeLedger, hashFeatureFile, hashAspectConfig } from './lib/ledger.mjs';
-import { computeFreshness, resolveStaleness, isStale } from './lib/freshness.mjs';
+import { readLedger, writeLedger } from './lib/ledger.mjs';
+import { cachedFeatureReader, cellFor, featureFingerprintFor, resolveAspectHash } from './lib/coverage-cell.mjs';
+import { resolveStaleness, isStale } from './lib/freshness.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -64,10 +62,10 @@ async function main() {
 
 	const spec = await loadSpec(repoRoot);
 	exitIfSpecInvalid(repoRoot, spec);
-	const { aspects: allAspects, features: allFeatures } = spec;
+	const { aspects: allAspects, features: allFeatures, releases } = spec;
 
 	if (sub) {
-		await override(sub, argv.slice(1), { aspectsDir, repoRoot, allAspects, allFeatures });
+		await override(sub, argv.slice(1), { aspectsDir, repoRoot, allAspects, allFeatures, releases });
 		return;
 	}
 
@@ -92,7 +90,7 @@ async function main() {
 	}
 	if (aspects.length === 0) { console.log('No active aspects.'); return; }
 
-	const matrix = await buildMatrix(aspects, allFeatures, { aspectsDir, repoRoot });
+	const matrix = await buildMatrix(aspects, allFeatures, { aspectsDir, repoRoot, releases });
 	if (opts.json) { printJson(matrix, opts); return; }
 	printMatrix(matrix, opts);
 }
@@ -101,38 +99,28 @@ async function main() {
 
 /**
  * For each aspect: load its ledger, resolve staleness + aspect-hash, and compute
- * a freshness result for every applicable feature. Returns a structure the
+ * a cell (`cellFor`) for every applicable feature. Returns a structure the
  * renderers walk.
  */
-async function buildMatrix(aspects, allFeatures, { aspectsDir, repoRoot }) {
+async function buildMatrix(aspects, allFeatures, { aspectsDir, repoRoot, releases }) {
+	const readText = cachedFeatureReader();
 	const columns = [];
 	const codeSet = new Set();
 	for (const aspect of aspects) {
-		const ledger = await readLedger(aspectsDir, aspect.name);
+		const { records } = await readLedger(aspectsDir, aspect.name);
 		const staleness = resolveStaleness(aspect.data);
 		const aspectHash = await resolveAspectHash(aspect);
-		const applicable = filterFeatures(allFeatures, aspect);
-		const cells = new Map();   // code → freshness result
-		for (const feat of applicable) {
-			cells.set(feat.code, cellFor(feat, ledger, staleness, aspectHash, repoRoot));
-			codeSet.add(feat.code);
+		const cells = new Map();   // code → cell
+		for (const feature of filterFeatures(allFeatures, aspect)) {
+			const record = records[feature.code] ?? null;
+			cells.set(feature.code, cellFor({ feature, aspect, record, aspectHash, staleness, releases, repoRoot, readText }));
+			codeSet.add(feature.code);
 		}
 		columns.push({ aspect: aspect.name, cells });
 	}
 	// Row order: inventory order (walkFeatures order), limited to applicable codes.
 	const rows = allFeatures.filter(f => codeSet.has(f.code)).map(f => ({ code: f.code, name: f.name }));
 	return { columns, rows };
-}
-
-function cellFor(feat, ledger, staleness, aspectHash, repoRoot) {
-	const record = ledger.records[feat.code] ?? null;
-	let featureHash = null;
-	try { featureHash = hashFeatureFile(feat.path); } catch { /* ignore */ }
-	const drift = record
-		? commitsTouching(repoRoot, record['audited-commit'], record.evidence || [])
-		: null;
-	const fresh = computeFreshness(record, { featureHash, aspectHash, staleness, drift });
-	return { ...fresh, verdict: record?.verdict ?? null };
 }
 
 function printMatrix({ columns, rows }, opts) {
@@ -192,7 +180,7 @@ function printJson({ columns, rows }, opts) {
 
 // ── Manual overrides: pin / accept ───────────────────────────────────────────
 
-async function override(kind, args, { aspectsDir, allAspects, allFeatures }) {
+async function override(kind, args, { aspectsDir, allAspects, allFeatures, releases }) {
 	const [code, aspectName] = args;
 	if (!code || !aspectName) {
 		console.error(`Usage: coverage.mjs ${kind} <FEATURE_CODE> <aspect>`);
@@ -217,21 +205,13 @@ async function override(kind, args, { aspectsDir, allAspects, allFeatures }) {
 	if (!aspect) { console.error(`Aspect "${aspectName}" is not active — cannot recompute its hash.`); process.exit(1); }
 	const feat = findFeature(allFeatures, code);
 	if (!feat) { console.error(`Feature "${code}" is not in the inventory — cannot recompute its hash.`); process.exit(1); }
+	const featureHash = featureFingerprintFor(feat, aspect, releases);
+	if (featureHash == null) { console.error(`Cannot read ${feat.path} — cannot recompute its hash.`); process.exit(1); }
 
-	record['feature-hash'] = hashFeatureFile(feat.path);
+	record['feature-hash'] = featureHash;
 	record['aspect-hash'] = await resolveAspectHash(aspect);
 	await writeLedger(aspectsDir, aspectName, ledger);
 	console.log(`Accepted ${code} @ ${aspectName} (verdict ${record.verdict}). Rehashed to current spec + criteria; drift unchanged.`);
-}
-
-/** Hash the resolved aspect config (aspect.md raw + effective prompt + template). */
-async function resolveAspectHash(aspect) {
-	let aspectMdRaw = '';
-	try { aspectMdRaw = await readFile(aspect.path, 'utf-8'); } catch { /* ignore */ }
-	let promptBody = '';
-	try { promptBody = await readPrompt(aspect); } catch { /* no prompt resolvable */ }
-	const ticketTemplateBody = await readTicketTemplate(aspect).catch(() => null);
-	return hashAspectConfig({ aspectMdRaw, promptBody, ticketTemplateBody });
 }
 
 main().catch(err => {

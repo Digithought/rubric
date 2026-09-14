@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
-import { readReleaseList, releaseRank } from './releases.mjs';
+import { dueRank, readReleaseList, releaseRank } from './releases.mjs';
 import { withTree } from './test-tree.mjs';
 
 // Contract: agent-rules/principles.md § Current release assumption — the first code is current,
@@ -84,4 +84,11 @@ test('releaseRank: no code and the current code rank 0, a later code its positio
 	assert.equal(releaseRank(list, 'LATER'), 2);
 	assert.equal(releaseRank(list, 'RC'), -1);
 	assert.equal(releaseRank(OFF, 'GA'), -1);
+});
+
+test('dueRank: releaseRank, except an unlisted code — one just shipped, or any code with no release list — ranks as current', () => {
+	const list = { present: true, current: 'BETA', codes: ['BETA', 'GA'], errors: [], unreadable: false };
+
+	assert.deepEqual([null, 'BETA', 'GA', 'RC'].map(code => dueRank(list, code)), [0, 0, 1, 0]);
+	assert.equal(dueRank(OFF, 'GA'), 0);
 });

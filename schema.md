@@ -162,7 +162,7 @@ An aspect can list multiple cadences; the runner unions them.
 
 - `drift-threshold` (default `1`) — number of commits touching a record's `evidence` paths, since the commit it was audited at, before it goes **drift-stale**. `1` = any relevant change re-audits; raise to tolerate churn.
 - `max-age` (default `null`, off) — a wall-clock backstop. When set (e.g. `180d`, `12w`, `90`), a record older than this is **age-stale** *even if git shows no drift*. Left off, an inactive repo never ages a record out — drift is the primary signal.
-- `on-spec-change` (default `stale`) — when the audited feature file's hash no longer matches, mark **spec-stale**. Set `ignore` for aspects indifferent to spec edits.
+- `on-spec-change` (default `stale`) — when the feature's fingerprint for this aspect (`feature-hash`) no longer matches, mark **spec-stale**. Set `ignore` for aspects indifferent to spec edits.
 - `on-criteria-change` (default `stale`) — when the resolved aspect config's hash no longer matches, mark **criteria-stale**. Set `ignore` to keep verdicts across prompt tweaks.
 
 Staleness is **derived at read time** by comparing a record's stored hashes and `audited-commit` against the current files and git history — never persisted. See the ledger schema for the state precedence.
@@ -303,7 +303,7 @@ records:
     verdict: covered                # covered | gap | partial | n/a | blocked
     audited: 2026-06-24T10:35:00Z   # ISO datetime of the audit
     audited-commit: 3fa9c21         # git HEAD short-sha at audit time
-    feature-hash: a1b2c3d4e5f6      # sha256 of the whole feature .md, 12 hex
+    feature-hash: a1b2c3d4e5f6      # the feature's fingerprint for this aspect (see Hashes), 12 hex
     aspect-hash: 9f8e7d6c5b4a       # sha256 of aspect.md + resolved prompt.md + ticket-template.md
     evidence:                       # paths the audit inspected (from the run log's Evidence section)
       - packages/site-cad/src/lib/modules/component/**
@@ -320,7 +320,11 @@ records:
 
 ### Hashes
 
-- **feature-hash** — sha256 of the entire feature `.md` (front-matter included — a `status:` or `capabilities:` edit is a spec change), first 12 hex. Line endings normalized to `\n` before hashing so CRLF churn doesn't trigger false spec-staleness.
+- **feature-hash** — the feature's fingerprint for this aspect: sha256, first 12 hex, of the feature `.md` as it bears on this aspect's audit, with line endings normalized to `\n` so CRLF churn doesn't trigger false spec-staleness. The file is hashed as written — body and front-matter, so a `status:`, `summary:` or capability edit is a spec change — except for these front-matter fields:
+  - `aspects:`, `surfaces:` and `target:` are left out, each key with every line it owns.
+  - A capability not due with its feature — its `target:` ranks later in `tickets/releases.md` than the feature's [effective target](#surfaces-and-target-inherit-down-the-tree) — is left out, and one that is due is hashed in its plain `- <text>` form. So the release it waits for shipping makes it a spec change, and stripping its tag afterwards changes nothing. A code the list does not hold ranks as current (most likely a release just shipped); with no release list, every capability is due.
+
+  Appended to that text, each only when non-empty: `rubric-annotation: <JSON>`, this aspect's resolved settings for the feature (the annotation's defaults overlaid by the feature's `aspects.<name>` block, in declaration order); then `rubric-surfaces: <JSON>`, the sorted overlap of the feature's effective surfaces with the aspect's `surfaces:`, when the aspect declares any. Editing one aspect's block therefore stales only that aspect's records, and a feature gaining a surface stales only the aspects that audit it. A file using none of these fields, audited by an aspect with no `annotation:` or `surfaces:`, fingerprints as the sha256 of the whole file.
 - **aspect-hash** — sha256 of the resolved aspect config: `aspect.md` concatenated with the effective `prompt.md` and `ticket-template.md` (project override or rubric default, whichever the audit would use), first 12 hex. Changing the audit's instructions invalidates prior verdicts.
 
 Neither the tested artifact (code, docs, help pages) nor its size is hashed — impractical and noisy. Drift over `evidence` paths, via git, is what tracks artifact change.
