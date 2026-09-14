@@ -39,11 +39,12 @@ Written by \`node rubric/scripts/init.mjs\`; hand edits are overwritten on the n
  * Compares against the existing file with CRLF normalised to LF, so a CRLF
  * checkout that already matches is left untouched rather than flipped to LF.
  * `tickets/rules` existing as a file (not a directory) is not handled here —
- * `mkdir` throws `ENOTDIR` naming the path, and the caller lets that surface.
+ * `mkdir` throws naming the path (`EEXIST` on Windows, `ENOTDIR` elsewhere),
+ * and the caller lets that surface.
  */
 export async function writeAnchorsAddendum(repoRoot) {
 	const ticketsDir = join(repoRoot, 'tickets');
-	if (!existsSync(ticketsDir) || !statSync(ticketsDir).isDirectory()) return 'skipped';
+	if (!statSync(ticketsDir, { throwIfNoEntry: false })?.isDirectory()) return 'skipped';
 
 	const filePath = join(repoRoot, ANCHORS_ADDENDUM_PATH);
 	const next = renderAnchorsAddendum();

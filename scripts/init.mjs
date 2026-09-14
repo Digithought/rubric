@@ -6,22 +6,19 @@
  *   aspects/    active aspect folder (empty — opt in per aspect)
  *   .runs/      run-log directory (with a .gitkeep so the empty dir is tracked)
  *
- * Also adds .runs/ to .gitignore (with .gitkeep carve-out) and prints next-step
- * pointers. Re-running detects existing state and only fills in what's missing.
+ * Also adds .runs/ to .gitignore (with .gitkeep carve-out), regenerates
+ * tickets/rules/rubric-anchors.md when tickets/ exists (see
+ * lib/anchors-addendum.mjs), and prints next-step pointers. Re-running detects
+ * existing state and only fills in what's missing.
  *
  * Does NOT activate any aspect. Aspect activation is a deliberate, per-project
  * choice — see rubric/agent-rules/add-aspect.md.
  */
 
-import { mkdir, writeFile, readFile, access } from 'node:fs/promises';
-import { constants, existsSync } from 'node:fs';
-import { join, dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { mkdir, writeFile, readFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { ANCHORS_ADDENDUM_PATH, writeAnchorsAddendum } from './lib/anchors-addendum.mjs';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const RUBRIC_ROOT = resolve(__dirname, '..');
 
 const FEATURES_README = `# Feature Inventory
 

@@ -15,7 +15,7 @@ Set rubric up in a project. This rule applies whether the project is new or alre
 6. **Write `tickets/rules/rubric-anchors.md`** when `tickets/` exists (a project using tess for tickets). It declares `features:` and `aspects:` as anchor fields alongside tess's own `architecture:` — see `principles.md` § Rubric anchors. The file is regenerated on every `init`; hand edits are overwritten. No `tickets/` directory means the file is skipped, not created.
 7. **Do not activate any aspects.** Aspects are project-specific; the user (or a follow-up `add-aspect` run) opts each one in.
 
-The whole operation is **idempotent**. Re-running `init` detects existing state and only fills in what is missing. Never delete or rewrite existing content unless explicitly asked.
+The whole operation is **idempotent**. Re-running `init` detects existing state and only fills in what is missing. Never delete or rewrite existing content unless explicitly asked — the one exception is `tickets/rules/rubric-anchors.md`, which init owns outright (step 6).
 
 ## `features/README.md` starter template
 
@@ -57,4 +57,5 @@ Confirm to the user:
 - Which folders were created vs. already present.
 - Whether `.gitignore` was updated.
 - Whether `AGENTS.md` (or equivalent) was updated.
+- Whether `tickets/rules/rubric-anchors.md` was created, updated, already current, or skipped for want of `tickets/`.
 - Pointers to next steps: `add-feature.md`, `add-aspect.md`.
