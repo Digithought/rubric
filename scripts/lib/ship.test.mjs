@@ -190,8 +190,9 @@ test('lastShippedRelease picks the latest matching subject and ignores similar o
 		git(root, 'commit', '-q', '--allow-empty', '-m', 'tess: ship release GA');
 		git(root, 'commit', '-q', '--allow-empty', '-m', 'tess: ship release beta');        // lowercase code — no match
 		git(root, 'commit', '-q', '--allow-empty', '-m', 'tess: ship release BETA extra');  // trailing text — no match
+		git(root, 'commit', '-q', '--allow-empty', '-m', 'garden: notes', '-m', 'tess: ship release LATER');  // exact text, but in the body — no match
 
-		assert.equal(lastShippedRelease(root), 'GA', 'the two more recent near-misses do not count; the older exact match does');
+		assert.equal(lastShippedRelease(root), 'GA', 'the three more recent near-misses do not count; the older exact match does');
 	});
 });
 

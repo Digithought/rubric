@@ -181,7 +181,7 @@ Staleness is **derived at read time** by comparing a record's stored hashes and 
 
 ## Checking the spec
 
-`node rubric/scripts/check-spec.mjs [--root <dir>]` checks every field rule above, and the release list through tess's reader, printing `<path>:<line>: <message>` for each problem. `run.mjs` and `coverage.mjs` run the same check at startup and exit without planning or recording anything — a dry run included — while it fails.
+`node rubric/scripts/check-spec.mjs [--root <dir>]` checks every field rule above, and the release list through tess's reader, printing `<path>:<line>: <message>` for each problem. `run.mjs` and `coverage.mjs` run the same check at startup and exit without planning or recording anything — a dry run included — while it fails. The exception is `coverage.mjs ship`, whose job is removing the tags that fail it: it checks after stripping instead, and exits 1 on anything left. When an unknown `target:` code is the one named by the most recent `tess: ship release <CODE>` commit, the message says to run `coverage.mjs ship`.
 
 ## Run-log schema
 

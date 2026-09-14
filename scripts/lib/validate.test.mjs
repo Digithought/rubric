@@ -205,6 +205,25 @@ for (const [name, overrides, expected, releases] of CASES) {
 	});
 }
 
+test('target: an unknown code that was just shipped points at coverage.mjs ship, on feature and capability tags alike; any other unknown code does not', async () => {
+	await withTree({
+		...BASE,
+		[SCN]: BASE[SCN].replace('target: GA', 'target: ALPHA'),
+		[TER]: fm('status: implemented', 'capabilities:', '  - text: Shade terrain', '    target: ALPHA'),
+	}, async (root) => {
+		const spec = await loadSpec(root);
+		const errors = (shipped) => validateSpec({ repoRoot: root, ...spec, releases: LIST, shipped });
+		const unknown = (suffix = '') => [
+			`${SCN}:3: target: ALPHA is not a code in tickets/releases.md${suffix}`,
+			`${TER}:4: target: ALPHA is not a code in tickets/releases.md${suffix}`,
+		];
+
+		assert.deepEqual(errors('ALPHA'), unknown(' — ALPHA was just shipped; run node rubric/scripts/coverage.mjs ship'));
+		assert.deepEqual(errors('OMEGA'), unknown(), 'the last shipped release was a different code');
+		assert.deepEqual(errors(null), unknown(), 'no ship commit found');
+	});
+});
+
 test('release list: when tess\'s reader is missing, that is the one error — target: tags are not judged against an unknown list', async () => {
 	await withTree({ ...BASE, 'tickets/releases.md': '## BETA\n\n## GA\n\n## LATER\n' }, async (root) => {
 		assert.deepEqual(validateSpec({ repoRoot: root, ...(await loadSpec(root)) }), [

@@ -51,7 +51,10 @@ const SHIP_SUBJECT_RE = /^tess: ship release ([A-Z][A-Z0-9]{1,7})$/;
  * does, rather than reporting a near-miss as the shipped release.
  */
 export function lastShippedRelease(cwd) {
-	const out = git(cwd, ['log', '--format=%s']);
+	// --grep keeps the output to candidate commits however long history grows (every
+	// subject would overrun execFileSync's 1 MiB buffer, silently, at about 20k commits).
+	// It matches any line of the message, so the subject is still checked below.
+	const out = git(cwd, ['log', '--format=%s', '--extended-regexp', `--grep=${SHIP_SUBJECT_RE.source}`]);
 	if (out == null) return null;
 	for (const subject of out.split('\n')) {
 		const m = subject.match(SHIP_SUBJECT_RE);

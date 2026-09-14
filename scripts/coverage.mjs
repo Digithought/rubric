@@ -15,6 +15,8 @@
  *   coverage.mjs accept <CODE> <aspect>  rehash to current spec/criteria, keep verdict
  *   coverage.mjs ship [<CODE>] [--dry-run]  strip a shipped release's target: tags
  *
+ * Every form takes `--root <dir>`: the project root (default: the parent of rubric/).
+ *
  * Freshness is derived, never stored — see schema.md and freshness.mjs. A parent
  * aspect with children has no verdicts, so it gets no column; its children
  * stand in its place, labelled `parent/child`.
@@ -52,6 +54,7 @@ Options:
                     with children shows its children.
   --stale           Show only rows with a stale or missing cell.
   --json            Emit JSON instead of the text matrix (or burn-down report).
+  --root <dir>      Project root holding features/ and aspects/. Default: the parent of rubric/.
   -h, --help        This message.
 
 burn-down lists, for the current release (the first in tickets/releases.md;
@@ -76,10 +79,9 @@ const SYMBOL = {
 const NA = ' ';   // aspect does not apply to this feature
 
 async function main() {
-	const argv = process.argv.slice(2);
-	if (argv.includes('-h') || argv.includes('--help')) { console.log(HELP); return; }
+	if (process.argv.includes('-h') || process.argv.includes('--help')) { console.log(HELP); return; }
 
-	const repoRoot = resolve(RUBRIC_ROOT, '..');
+	const { argv, repoRoot } = takeRoot(process.argv.slice(2));
 	const aspectsDir = join(repoRoot, 'aspects');
 
 	const sub = argv[0] && !argv[0].startsWith('-') ? argv[0] : null;
@@ -128,6 +130,14 @@ async function main() {
 	const matrix = await buildMatrix(aspects, allFeatures, { aspectsDir, repoRoot, releases });
 	if (opts.json) { printJson(matrix, opts); return; }
 	printMatrix(matrix, opts);
+}
+
+/** `--root <dir>`, taken out of the arguments wherever it appears so subcommand parsing never sees it. */
+function takeRoot(args) {
+	const i = args.indexOf('--root');
+	if (i === -1) return { argv: args, repoRoot: resolve(RUBRIC_ROOT, '..') };
+	if (i + 1 >= args.length) { console.error('Option --root requires a value.'); console.error(HELP); process.exit(2); }
+	return { argv: [...args.slice(0, i), ...args.slice(i + 2)], repoRoot: resolve(args[i + 1]) };
 }
 
 /** A parent with children has no verdicts, so records left in its own ledger are never read — say so. */
@@ -283,24 +293,23 @@ async function runShip(args, repoRoot) {
 		process.exit(1);
 	}
 
-	console.log(`stripped ${code}: ${shipCounts(plan).join(', ')} in ${plan.edits.length} file${plan.edits.length === 1 ? '' : 's'}`);
+	const featureTargets = plan.edits.filter(e => e.featureTarget).length;
+	const capabilityTargets = plan.edits.reduce((n, e) => n + e.capabilities, 0);
+	console.log(`stripped ${code}: ${count(featureTargets, 'feature target')}, ${count(capabilityTargets, 'capability target')} in ${count(plan.edits.length, 'file')}`);
 }
 
-const shipCounts = (plan) => [
-	`${plan.edits.filter(e => e.featureTarget).length} feature targets`,
-	`${plan.edits.reduce((n, e) => n + e.capabilities, 0)} capability targets`,
-];
+const count = (n, noun) => `${n} ${noun}${n === 1 ? '' : 's'}`;
 
 function printShipPlan(plan, code, repoRoot) {
 	if (plan.edits.length === 0) {
 		console.log(`No feature file carries target: ${code}.`);
 		return;
 	}
-	console.log(`Strip target: ${code} from ${plan.edits.length} feature file${plan.edits.length === 1 ? '' : 's'}:`);
+	console.log(`Strip target: ${code} from ${count(plan.edits.length, 'feature file')}:`);
 	for (const edit of plan.edits) {
 		const parts = [];
 		if (edit.featureTarget) parts.push('feature target');
-		if (edit.capabilities) parts.push(`${edit.capabilities} capability target${edit.capabilities === 1 ? '' : 's'}`);
+		if (edit.capabilities) parts.push(count(edit.capabilities, 'capability target'));
 		console.log(`  ${relative(repoRoot, edit.path).split(sep).join('/')}: ${parts.join(', ')}`);
 	}
 }
