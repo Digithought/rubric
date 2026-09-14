@@ -31,7 +31,7 @@ node rubric/scripts/init.mjs
 node /path/to/rubric/scripts/init.mjs
 ```
 
-`init.mjs` is idempotent — safe to re-run at any time. It creates the peer folders rubric expects (`features/`, `aspects/`, `.runs/`) and updates `.gitignore`.
+`init.mjs` is idempotent — safe to re-run at any time. It creates the peer folders rubric expects (`features/`, `aspects/`, `.runs/`), updates `.gitignore`, and — when `tickets/` exists — (re)writes `tickets/rules/rubric-anchors.md`, the [tess](https://github.com/gotchoices/tess) addendum declaring `features:` and `aspects:` as ticket anchor fields.
 
 ### 2. Add features
 

@@ -17,6 +17,7 @@ import { mkdir, writeFile, readFile, access } from 'node:fs/promises';
 import { constants, existsSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { ANCHORS_ADDENDUM_PATH, writeAnchorsAddendum } from './lib/anchors-addendum.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -196,6 +197,12 @@ async function main() {
 	// AGENTS.md / CLAUDE.md — append a rubric section if not already present
 	await ensureRootAgentRules(repoRoot, created, updated, existed);
 
+	// tickets/rules/rubric-anchors.md — only meaningful for a project using tess
+	const anchorsResult = await writeAnchorsAddendum(repoRoot);
+	if (anchorsResult === 'created') created.push(ANCHORS_ADDENDUM_PATH);
+	else if (anchorsResult === 'updated') updated.push(ANCHORS_ADDENDUM_PATH);
+	else if (anchorsResult === 'unchanged') existed.push(ANCHORS_ADDENDUM_PATH);
+
 	// ── Report ──
 	console.log('rubric init');
 	if (created.length > 0) {
@@ -209,6 +216,9 @@ async function main() {
 	if (existed.length > 0) {
 		console.log('  Already present:');
 		for (const p of existed) console.log(`    · ${p}`);
+	}
+	if (anchorsResult === 'skipped') {
+		console.log(`  tickets/ not found — skipped ${ANCHORS_ADDENDUM_PATH} (only used with tess)`);
 	}
 	console.log('');
 	console.log('Next steps:');

@@ -12,7 +12,8 @@ Set rubric up in a project. This rule applies whether the project is new or alre
 3. **Scaffold `aspects/README.md`** with a short pointer to `rubric/README.md` and a list of available defaults found under `rubric/defaults/aspects/`. This lets a reader see what could be activated without spelunking.
 4. **Add `.runs/` to the project's `.gitignore`.** Idempotent — only add the line if it is not already there. Also `.gitkeep` the folder if you want it tracked as empty.
 5. **Reference rubric in the project's root agent-onboarding docs** — `AGENTS.md` and `CLAUDE.md`. Append a short `## Specification (rubric)` section pointing agents at [`rubric/agent-rules/root.md`](root.md) (the entry point for rubric operations) and listing the peer folders. Create the file if it does not exist; skip if a section with that heading is already present.
-6. **Do not activate any aspects.** Aspects are project-specific; the user (or a follow-up `add-aspect` run) opts each one in.
+6. **Write `tickets/rules/rubric-anchors.md`** when `tickets/` exists (a project using tess for tickets). It declares `features:` and `aspects:` as anchor fields alongside tess's own `architecture:` — see `principles.md` § Rubric anchors. The file is regenerated on every `init`; hand edits are overwritten. No `tickets/` directory means the file is skipped, not created.
+7. **Do not activate any aspects.** Aspects are project-specific; the user (or a follow-up `add-aspect` run) opts each one in.
 
 The whole operation is **idempotent**. Re-running `init` detects existing state and only fills in what is missing. Never delete or rewrite existing content unless explicitly asked.
 
