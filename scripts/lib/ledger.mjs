@@ -78,6 +78,7 @@ export function upsertRecord(ledger, code, record) {
  * (only their overlap with the aspect's counts) and the release tag (only which
  * capabilities are in scope counts).
  */
+// NOTE: a dropped key's span leaves the blank lines around it, so a settings block added together with a new blank line still changes the other aspects' fingerprints; if audits that write their own aspects.<name> block turn out to add one, also drop the blank lines directly before a dropped key.
 const UNFINGERPRINTED_KEYS = new Set(['aspects', 'surfaces', 'target']);
 
 /**
