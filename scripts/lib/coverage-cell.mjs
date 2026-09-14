@@ -16,14 +16,17 @@ import { featureFingerprint, hashAspectConfig } from './ledger.mjs';
 
 /**
  * The ledger's `aspect-hash` for an aspect as it would be audited now:
- * `aspect.md` with the prompt and ticket template the audit would use. This is
- * the only place the aspect hash is composed.
+ * `aspect.md` — a child's parent's `aspect.md` before its own — with the prompt
+ * and ticket template the audit would use, a child's composed from its parent's.
+ * This is the only place the aspect hash is composed.
  */
 export async function resolveAspectHash(aspect) {
-	const aspectMdRaw = await readFile(aspect.path, 'utf-8').catch(() => '');
+	const readRaw = (path) => readFile(path, 'utf-8').catch(() => '');
+	const parentAspectMdRaw = aspect.parent ? await readRaw(aspect.parent.path) : null;
+	const aspectMdRaw = await readRaw(aspect.path);
 	const promptBody = await readPrompt(aspect).catch(() => '');
 	const ticketTemplateBody = await readTicketTemplate(aspect).catch(() => null);
-	return hashAspectConfig({ aspectMdRaw, promptBody, ticketTemplateBody });
+	return hashAspectConfig({ parentAspectMdRaw, aspectMdRaw, promptBody, ticketTemplateBody });
 }
 
 /** A feature file's text, or null when it cannot be read. */

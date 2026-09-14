@@ -24,6 +24,15 @@ Use this when activating a new aspect for the project.
 7. **Tune staleness (optional).** The `staleness:` block governs when `run.mjs --stale-only` re-audits a prior verdict (schema in [`schema.md`](../schema.md)). Defaults (`drift-threshold: 1`, `max-age: null`, spec/criteria changes → stale) suit most aspects: any commit touching a feature's evidence re-audits it, wall-clock is ignored. Raise `drift-threshold` for aspects whose evidence churns cosmetically; set a `max-age` only if you want a time backstop independent of git activity.
 8. **Update `aspects/README.md`** to list the newly active aspect.
 
+## Child aspects
+
+Split an aspect into children when its gap for a feature would be its own ticket, fixed independently of a sibling's gap ([principles](principles.md#aspect-annotations-surfaces-and-hierarchy)). A child is an ordinary aspect folder whose `aspect.md` declares `parent: <name>`; what it takes from the parent is in [`schema.md`](../schema.md#surfaces-parent-and-annotation).
+
+- Give the child its own `prompt.md` holding only what differs: it is appended to the parent's prompt. `check-spec.mjs` fails a child without one.
+- Give the child its own `cadence:`, `batch:` and ticket settings; none are inherited. Put an `annotation:` on the child whose audit records it — a parent with children has no audit to read it.
+- Moving an existing aspect under a parent keeps its ledger (same folder) but criteria-stales its records, because the prompt its audit uses really changed. When the parent's prompt adds nothing that would change a verdict, `node rubric/scripts/coverage.mjs accept <CODE> <aspect>` rehashes a record without re-auditing it.
+- Once the parent has children, records left in its own `coverage.md` are ignored; `coverage.mjs` warns while any remain.
+
 ## Don't
 
 - Don't activate an aspect "just in case." Each aspect adds audit cost and ticket noise. Activate when the project is ready to act on gap tickets in that aspect.

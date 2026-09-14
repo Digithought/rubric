@@ -243,7 +243,8 @@ function checkAspectBlocks(features, aspects, report) {
 				continue;
 			}
 			if (feature.data.status !== 'retired' && !aspectApplies(aspect, feature)) {
-				report(path, line, `aspects.${name}: ${name} does not apply to this feature (its level, applies-to or surfaces exclude it)`);
+				const excluding = aspect.parent ? `its level, applies-to or surfaces, or its parent ${aspect.parent.name}'s,` : 'its level, applies-to or surfaces';
+				report(path, line, `aspects.${name}: ${name} does not apply to this feature (${excluding} exclude it)`);
 			}
 			const schema = annotationSchema(aspect);
 			if (!schema) continue;  // the malformed annotation: is reported on the aspect
@@ -306,9 +307,10 @@ function checkAnnotation(aspect, report) {
 // ── Aspect parents ───────────────────────────────────────────────────────────
 
 /**
- * `parent:` names another active aspect, one level deep, at the same level.
- * A parent with children has no verdicts of its own, so its `annotation:`
- * would never be read.
+ * `parent:` names another active aspect, one level deep, at the same level, and
+ * the child has a prompt of its own — the delta its audit appends to the
+ * parent's. A parent with children has no verdicts of its own, so its
+ * `annotation:` would never be read.
  */
 function checkParents(aspects, report) {
 	const byName = new Map(aspects.map(a => [a.name, a]));
@@ -328,6 +330,9 @@ function checkParents(aspects, report) {
 			continue;
 		}
 		childrenOf.set(name, [...(childrenOf.get(name) ?? []), aspect.name]);
+		if (!aspect.promptPath) {
+			report(path, line, `child aspect ${aspect.name} needs its own prompt.md (the delta appended to ${name}'s prompt)`);
+		}
 		if (parent.data.parent != null) {
 			report(path, line, `parent: ${name} has a parent of its own (${show(parent.data.parent)}) — aspects nest one level only`);
 		}

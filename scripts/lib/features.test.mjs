@@ -68,6 +68,17 @@ test('filterFeatures: level, applies-to and surfaces compose — all must admit 
 	assert.deepEqual(codes({ surfaces: ['web', 'mobile'], level: 'leaf' }), ['SCN-HIER-PCK']);
 });
 
+test('filterFeatures: a child audits a feature only when its parent\'s level, applies-to and surfaces admit it as well as its own', async () => {
+	const features = await walk(TREE);
+	const codes = (parentData, childData) => filterFeatures(features, { name: 'child', data: childData, parent: { name: 'parent', data: parentData } })
+		.map(f => f.code).sort();
+
+	assert.deepEqual(codes({ surfaces: ['mobile'] }, { surfaces: ['web', 'mobile'] }), ['SCN-HIER-PCK'], 'surfaces: the intersection');
+	assert.deepEqual(codes({ surfaces: ['mobile'] }, { surfaces: ['api'] }), [], 'disjoint surfaces: nothing, and no error');
+	assert.deepEqual(codes({ level: 'root' }, {}), ['SCN', 'TER'], 'a child without level: audits its parent\'s');
+	assert.deepEqual(codes({ 'applies-to': { exclude: ['SCN-HIER'] } }, { surfaces: ['web'] }), ['SCN']);
+});
+
 test('readSurfaceVocabulary: the surfaces: list in features/README.md front-matter with its line, else null', async () => {
 	await withTree(TREE, async (root) => {
 		assert.deepEqual(await readSurfaceVocabulary(join(root, 'features')), {

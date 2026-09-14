@@ -7,18 +7,21 @@
  * offers the two manual overrides the schema defines:
  *
  *   coverage.mjs                       freshness matrix (features × aspects)
- *   coverage.mjs --aspect <name>       restrict to one aspect
+ *   coverage.mjs --aspect <name>       restrict to one aspect (a parent: its children)
  *   coverage.mjs --stale               only stale/missing rows
  *   coverage.mjs --json                machine-readable dump
  *   coverage.mjs pin <CODE> <aspect>   reaffirm a record (suppress drift/age)
  *   coverage.mjs accept <CODE> <aspect>  rehash to current spec/criteria, keep verdict
  *
- * Freshness is derived, never stored — see schema.md and freshness.mjs.
+ * Freshness is derived, never stored — see schema.md and freshness.mjs. A parent
+ * aspect with children has no verdicts, so it gets no column; its children
+ * stand in its place, labelled `parent/child`.
  */
 
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { aspectLabel, aspectsNamed, coverageColumns, hasVerdicts } from './lib/aspects.mjs';
 import { filterFeatures, findFeature } from './lib/features.mjs';
 import { exitIfSpecInvalid, loadSpec } from './lib/validate.mjs';
 import { readLedger, writeLedger } from './lib/ledger.mjs';
@@ -37,7 +40,8 @@ Usage:
   coverage.mjs accept <FEATURE_CODE> <aspect>         rehash to current spec/criteria
 
 Options:
-  --aspect <name>   Restrict the matrix to one active aspect.
+  --aspect <name>   Restrict the matrix to one active aspect; a parent aspect
+                    with children shows its children.
   --stale           Show only rows with a stale or missing cell.
   --json            Emit JSON instead of the text matrix.
   -h, --help        This message.
@@ -79,28 +83,37 @@ async function main() {
 		else { console.error(`Unknown option: ${a}`); console.error(HELP); process.exit(2); }
 	}
 
-	let aspects = allAspects;
-	if (opts.aspect) {
-		aspects = aspects.filter(a => a.name === opts.aspect);
-		if (aspects.length === 0) {
-			console.error(`Aspect "${opts.aspect}" is not active. Active aspects:`);
-			allAspects.forEach(a => console.error(`  ${a.name}`));
-			process.exit(1);
-		}
+	const scope = opts.aspect ? allAspects.filter(a => a.name === opts.aspect) : allAspects;
+	if (opts.aspect && scope.length === 0) {
+		console.error(`Aspect "${opts.aspect}" is not active. Active aspects:`);
+		allAspects.forEach(a => console.error(`  ${a.name}`));
+		process.exit(1);
 	}
-	if (aspects.length === 0) { console.log('No active aspects.'); return; }
+	if (scope.length === 0) { console.log('No active aspects.'); return; }
+	await warnIgnoredParentLedgers(scope, aspectsDir);
 
+	const aspects = coverageColumns(opts.aspect ? aspectsNamed(allAspects, opts.aspect) : allAspects);
 	const matrix = await buildMatrix(aspects, allFeatures, { aspectsDir, repoRoot, releases });
 	if (opts.json) { printJson(matrix, opts); return; }
 	printMatrix(matrix, opts);
 }
 
+/** A parent with children has no verdicts, so records left in its own ledger are never read — say so. */
+async function warnIgnoredParentLedgers(aspects, aspectsDir) {
+	for (const parent of aspects.filter(a => !hasVerdicts(a))) {
+		const { records } = await readLedger(aspectsDir, parent.name);
+		if (Object.keys(records).length) {
+			console.warn(`aspects/${parent.name}/coverage.md has records but ${parent.name} has children; its verdicts are ignored`);
+		}
+	}
+}
+
 // ── Freshness matrix ─────────────────────────────────────────────────────────
 
 /**
- * For each aspect: load its ledger, resolve staleness + aspect-hash, and compute
- * a cell (`cellFor`) for every applicable feature. Returns a structure the
- * renderers walk.
+ * For each aspect, in column order: load its ledger, resolve staleness +
+ * aspect-hash, and compute a cell (`cellFor`) for every applicable feature.
+ * Returns a structure the renderers walk.
  */
 async function buildMatrix(aspects, allFeatures, { aspectsDir, repoRoot, releases }) {
 	const readText = cachedFeatureReader();
@@ -116,7 +129,7 @@ async function buildMatrix(aspects, allFeatures, { aspectsDir, repoRoot, release
 			cells.set(feature.code, cellFor({ feature, aspect, record, aspectHash, staleness, releases, repoRoot, readText }));
 			codeSet.add(feature.code);
 		}
-		columns.push({ aspect: aspect.name, cells });
+		columns.push({ aspect: aspect.name, label: aspectLabel(aspect), parent: aspect.parent?.name ?? null, cells });
 	}
 	// Row order: inventory order (walkFeatures order), limited to applicable codes.
 	const rows = allFeatures.filter(f => codeSet.has(f.code)).map(f => ({ code: f.code, name: f.name }));
@@ -129,7 +142,7 @@ function printMatrix({ columns, rows }, opts) {
 		: rows;
 
 	// Aspects are indexed; the header carries the index, the legend the names.
-	console.log('Aspects: ' + columns.map((c, i) => `[${i + 1}] ${c.aspect}`).join('  '));
+	console.log('Aspects: ' + columns.map((c, i) => `[${i + 1}] ${c.label}`).join('  '));
 	console.log('Legend:  . fresh  ? missing  S spec-stale  C criteria-stale  D drift-stale  A age-stale   (blank = n/a)');
 	console.log('');
 
@@ -158,7 +171,7 @@ function printMatrix({ columns, rows }, opts) {
 
 function printJson({ columns, rows }, opts) {
 	const out = {
-		aspects: columns.map(c => c.aspect),
+		aspects: columns.map(c => ({ name: c.aspect, parent: c.parent })),
 		features: [],
 		tally: {},
 	};

@@ -36,6 +36,7 @@ const BASE = {
 	[PERFORMANCE]: fm(...PERFORMANCE_HEAD, ...PERFORMANCE_ANNOTATION),
 	[HELP]: fm('name: help', 'status: active', 'level: leaf'),
 	[TOOLTIPS]: fm('name: tooltips', 'status: draft', 'level: leaf', 'parent: help'),
+	'aspects/tooltips/prompt.md': 'Check each control has a tooltip.\n',
 };
 
 function errorsFor(overrides = {}, releases = LIST) {
@@ -142,6 +143,12 @@ const CASES = [
 	['aspects: a block sits only on a feature the aspect applies to',
 		{ [TER]: fm('status: implemented', 'aspects:', '  performance:', '    budget: "1 s"') },
 		[`${TER}:3: aspects.performance: performance does not apply to this feature (its level, applies-to or surfaces exclude it)`]],
+	['aspects: a child\'s block sits only on a feature its parent applies to as well',
+		{
+			[TOOLTIPS]: fm('name: tooltips', 'status: draft', 'parent: help', 'annotation:', '  hint:', '    type: string'),
+			[SCN]: fm('surfaces: [web]', 'target: GA', 'capabilities:', '  - Browse the scene', '  - text: Export to KML', '    target: LATER', 'aspects:', '  tooltips:', '    hint: Drag to pan'),
+		},
+		[`${SCN}:8: aspects.tooltips: tooltips does not apply to this feature (its level, applies-to or surfaces, or its parent help's, exclude it)`]],
 	['aspects: a retired feature is exempt from the applicability rule',
 		{ [TER]: fm('status: retired', 'aspects:', '  performance:', '    budget: "1 s"') },
 		[]],
@@ -181,6 +188,9 @@ const CASES = [
 	['parent: a child audits the same level as its parent',
 		{ [TOOLTIPS]: fm('name: tooltips', 'status: draft', 'level: branch', 'parent: help') },
 		[`${TOOLTIPS}:4: level: branch differs from parent help's level: leaf — a child audits the same level as its parent`]],
+	['parent: a child has a prompt of its own — the delta appended to its parent\'s',
+		{ 'aspects/hints/aspect.md': fm('name: hints', 'status: active', 'level: leaf', 'parent: help') },
+		['aspects/hints/aspect.md:5: child aspect hints needs its own prompt.md (the delta appended to help\'s prompt)']],
 	['parent: a parent with children declares no annotation:',
 		{ [HELP]: fm('name: help', 'status: active', 'level: leaf', 'annotation:', '  depth:', '    type: enum', '    values: [overview, reference]') },
 		[`${HELP}:5: annotation: help has child aspects (tooltips) and no verdicts of its own, so nothing would read these settings`]],

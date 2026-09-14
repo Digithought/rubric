@@ -6,7 +6,7 @@ import type { ServerResponse } from 'node:http';
 // Rubric's own spec readers and coverage cell, imported so the UI derives
 // freshness exactly as the runner does — no re-implementation (DRY). These live
 // outside `src/`, hence the ../../../ hop.
-import { discoverActiveAspects } from '../../../scripts/lib/aspects.mjs';
+import { coverageColumns, discoverActiveAspects } from '../../../scripts/lib/aspects.mjs';
 import { cachedFeatureReader, cellFor, resolveAspectHash } from '../../../scripts/lib/coverage-cell.mjs';
 import { filterFeatures, walkFeatures } from '../../../scripts/lib/features.mjs';
 import { resolveStaleness } from '../../../scripts/lib/freshness.mjs';
@@ -302,6 +302,7 @@ function flattenFeatures(tree: FeatureNode[], out: FeatureNode[] = []): FeatureN
 
 export interface AspectSummary {
 	name: string;            // folder name = aspect name
+	parent: string | null;   // resolved parent aspect's name; null for a top-level aspect
 	status?: string;
 	level?: string;
 	batch?: number;
@@ -314,8 +315,14 @@ export interface AspectSummary {
 	lastRun?: string | null; // run filename (newest mentioning this aspect), or null
 }
 
+// Rubric's own discovery, so the UI resolves active aspects and their parents exactly as the runner does.
+function discoverAspects(opts: ApiOptions) {
+	return discoverActiveAspects(opts.aspectsDir, join(opts.rubricDir, 'defaults', 'aspects'));
+}
+
 async function listAspects(opts: ApiOptions): Promise<AspectSummary[]> {
 	if (!await isDir(opts.aspectsDir)) return [];
+	const parentOf = new Map((await discoverAspects(opts)).map(a => [a.name, a.parent?.name ?? null]));
 	const entries = await readdir(opts.aspectsDir, { withFileTypes: true });
 	const aspects: AspectSummary[] = [];
 	for (const e of entries) {
@@ -336,6 +343,7 @@ async function listAspects(opts: ApiOptions): Promise<AspectSummary[]> {
 		const batchVal = typeof meta.batch === 'string' ? parseInt(meta.batch, 10) : undefined;
 		aspects.push({
 			name: e.name,
+			parent: parentOf.get(e.name) ?? null,
 			status: typeof meta.status === 'string' ? meta.status : undefined,
 			level: typeof meta.level === 'string' ? meta.level : undefined,
 			batch: Number.isFinite(batchVal) ? batchVal : undefined,
@@ -548,25 +556,28 @@ export interface CoverageCell {
  * Coverage matrix derived from the durable **coverage ledgers**
  * (`aspects/<name>/coverage.md`) rather than ephemeral run logs.
  *
- * For every active aspect, each feature it applies to that has a ledger record
- * gets its cell from `cellFor` — the derivation `run.mjs --stale-only` and
- * `coverage.mjs` use — so the matrix shows what the runner would decide. Pairs
- * with no record are omitted (the cell renders "missing").
+ * For every aspect with verdicts — a parent with children has none, so it gets
+ * no column — each feature it applies to that has a ledger record gets its cell
+ * from `cellFor`, the derivation `run.mjs --stale-only` and `coverage.mjs` use,
+ * so the matrix shows what the runner would decide. Pairs with no record are
+ * omitted (the cell renders "missing"). `columns` names the aspects in
+ * `coverage.mjs`'s column order.
  *
  * Resilience: a missing ledger yields an empty record set (all missing); a
  * non-git tree makes drift `unverifiable` (handled inside `commitsTouching`).
  * Any per-aspect failure is logged and skipped rather than failing the endpoint.
  */
-async function buildCoverage(opts: ApiOptions): Promise<Record<string, Record<string, CoverageCell>>> {
+async function buildCoverage(opts: ApiOptions): Promise<{ columns: string[]; matrix: Record<string, Record<string, CoverageCell>> }> {
 	const coverage: Record<string, Record<string, CoverageCell>> = {};
 	const [aspects, features, releases] = await Promise.all([
-		discoverActiveAspects(opts.aspectsDir, join(opts.rubricDir, 'defaults', 'aspects')),
+		discoverAspects(opts),
 		walkFeatures(opts.featuresDir),
 		readReleaseList(opts.projectRoot),
 	]);
 	const readText = cachedFeatureReader();
+	const columns = coverageColumns(aspects);
 
-	for (const aspect of aspects) {
+	for (const aspect of columns) {
 		try {
 			const { records } = await readLedger(opts.aspectsDir, aspect.name);
 			if (Object.keys(records).length === 0) continue;
@@ -593,7 +604,7 @@ async function buildCoverage(opts: ApiOptions): Promise<Record<string, Record<st
 		}
 	}
 
-	return coverage;
+	return { columns: columns.map(a => a.name), matrix: coverage };
 }
 
 // ---------- Plugin ----------
@@ -676,8 +687,9 @@ export function rubricApi(opts: ApiOptions): Plugin {
 							path: n.path,
 							hasFile: n.hasFile,
 						}));
-						const aspects = await listAspects(opts);
-						const matrix = await buildCoverage(opts);
+						const summaries = new Map((await listAspects(opts)).map(a => [a.name, a]));
+						const { columns, matrix } = await buildCoverage(opts);
+						const aspects = columns.flatMap(name => summaries.get(name) ?? []);
 						return json(res, { features, aspects, matrix });
 					}
 

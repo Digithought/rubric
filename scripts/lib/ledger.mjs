@@ -112,14 +112,14 @@ export function capabilityDueWithFeature(feature, cap, releases) {
 
 /**
  * sha256 (first 12 hex) of the resolved aspect config — `aspect.md` concatenated
- * with the effective prompt and ticket-template bodies, each normalized. Any
- * change to the audit's instructions invalidates prior verdicts.
+ * with the effective prompt and ticket-template bodies, each normalized; a
+ * child's parent's `aspect.md` comes first. Any change to the audit's
+ * instructions invalidates prior verdicts.
  */
-export function hashAspectConfig({ aspectMdRaw, promptBody, ticketTemplateBody }) {
-	const combined = [aspectMdRaw, promptBody, ticketTemplateBody]
-		.map(x => normalize(x || ''))
-		.join('\n');
-	return sha12(combined);
+export function hashAspectConfig({ parentAspectMdRaw = null, aspectMdRaw, promptBody, ticketTemplateBody }) {
+	const parts = [aspectMdRaw, promptBody, ticketTemplateBody];
+	if (parentAspectMdRaw != null) parts.unshift(parentAspectMdRaw);
+	return sha12(parts.map(x => normalize(x || '')).join('\n'));
 }
 
 function sha12(str) {

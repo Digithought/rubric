@@ -7,10 +7,16 @@ export interface AspectRecord {
 	path: string;
 	data: Record<string, any>;
 	keyLines: Record<string, number>;
+	/** The aspect's own prompt; a child's audit prepends its parent's (`readPrompt`). */
 	promptPath: string | null;
 	promptSource: 'project' | 'default' | null;
+	/** The aspect's own template; a child without one uses its parent's (`readTicketTemplate`). */
 	ticketTemplatePath: string | null;
 	ticketTemplateSource: 'project' | 'default' | null;
+	/** The resolved parent's record; null for a top-level aspect or an unresolvable `parent:`. */
+	parent: AspectRecord | null;
+	/** Names of active children, sorted. */
+	children: string[];
 }
 
 export function discoverActiveAspects(aspectsDir: string, defaultsDir: string): Promise<AspectRecord[]>;
@@ -18,6 +24,14 @@ export function discoverActiveAspects(aspectsDir: string, defaultsDir: string): 
 export function readPrompt(aspect: AspectRecord): Promise<string>;
 
 export function readTicketTemplate(aspect: AspectRecord): Promise<string | null>;
+
+export function hasVerdicts(aspect: Pick<AspectRecord, 'children'>): boolean;
+
+export function aspectsNamed(aspects: AspectRecord[], name: string): AspectRecord[];
+
+export function coverageColumns(aspects: AspectRecord[]): AspectRecord[];
+
+export function aspectLabel(aspect: Pick<AspectRecord, 'name' | 'parent'>): string;
 
 export function annotationSchema(aspect: Pick<AspectRecord, 'data'>): Record<string, Record<string, unknown>> | null;
 

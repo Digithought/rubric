@@ -10,6 +10,8 @@
 
 import { relative } from 'node:path';
 
+import { annotationSchema, resolveAnnotation } from './aspects.mjs';
+
 export function buildAuditPrompt({
 	aspect,
 	aspectPromptBody,
@@ -23,9 +25,15 @@ export function buildAuditPrompt({
 }) {
 	const aspectName = aspect.name;
 	const ticketStage = aspect.data['ticket-stage'] || 'plan';
+	const settings = annotationSchema(aspect);
 	const featureList = features
-		.map(f => `- ${f.code} — ${f.name}  (${rel(f.path, repoRoot)})`)
+		.map(f => `- ${f.code} — ${f.name}  (${rel(f.path, repoRoot)})`
+			+ (settings ? `\n  settings: ${JSON.stringify(resolveAnnotation(aspect, f))}` : ''))
 		.join('\n');
+
+	const settingsSection = settings
+		? `\n## Feature settings for this aspect\n\nEach feature's \`settings:\` line is what this audit uses for it: the defaults in \`aspects/${aspectName}/aspect.md\`, overridden by the feature's own \`aspects.${aspectName}\` block in its front-matter.\n\nThese settings are the one exception to "do not edit content". When the aspect prompt asks you to record a value, write it only under \`aspects.${aspectName}\` in that feature's front-matter, only keys the annotation declares (${Object.keys(settings).map(k => `\`${k}\``).join(', ')}), and change nothing else in the file.\n`
+		: '';
 
 	const blockerSection = knownBlockers.length
 		? `\n## Known blockers this run\n\nEarlier batches in this run reported shared conditions that may impede your audit. **Do not re-investigate them.** If a feature you're auditing depends on one of these, mark it \`blocked\` in your verdicts (don't file a gap ticket) and move on:\n\n${knownBlockers.map(b => `- **${b.id}** (${b.scope}, ${b.severity}) — ${b.summary}${b.detect ? ` _(detect: ${b.detect})_` : ''}`).join('\n')}\n`
@@ -48,7 +56,7 @@ ${aspectPromptBody.trim()}
 ${featureList}
 
 Each feature's full spec is in the listed file. Read the front-matter (\`status\`, \`summary\`, \`description\`, \`capabilities\`, \`related\`) and the body before deciding.
-${blockerSection}${tplSection}
+${settingsSection}${blockerSection}${tplSection}
 ## Run log
 
 When finished, write a single run log file at:
@@ -105,7 +113,7 @@ If a blocker is already listed under "Known blockers this run", don't re-raise i
 ## Constraints
 
 - Use **judgement** for applicability. There is no static matrix. If the aspect doesn't apply, mark \`n/a\` with a short reason — don't file a ticket.
-- Do **not** edit code or content to fix the gap. The audit surfaces gaps; remediation is a separate ticketed activity.
+- Do **not** edit code or content to fix the gap. The audit surfaces gaps; remediation is a separate ticketed activity.${settings ? ' Recording settings, as "Feature settings for this aspect" describes, is the one exception.' : ''}
 - Do **not** expand the batch. Stay within the features above. Note adjacent observations only.
 - Do **not** invent feature codes. If a code in the batch isn't in \`features/\`, note it and skip.
 - Stay efficient. If a single feature is taking outsized investigation, mark it \`partial\` with a sketch and let a follow-up ticket carry the deeper dig.

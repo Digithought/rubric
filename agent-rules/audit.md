@@ -4,7 +4,7 @@ Run a single aspect against a batch of features. You are invoked with: an aspect
 
 ## Inputs
 
-1. **The aspect.** Read `aspects/<name>/aspect.md` for config. Read `aspects/<name>/prompt.md` for instructions; if absent, fall back to `rubric/defaults/aspects/<extends>/prompt.md` (where `extends` defaults to `<name>`). Read the ticket template the same way.
+1. **The aspect.** Read `aspects/<name>/aspect.md` for config. Read `aspects/<name>/prompt.md` for instructions; if absent, fall back to `rubric/defaults/aspects/<extends>/prompt.md` (where `extends` defaults to `<name>`). Read the ticket template the same way. For a child aspect (`parent:`) the runner hands you the composed prompt — the parent's, then the child's own — and the template falls back to the parent's ([`schema.md`](../schema.md#surfaces-parent-and-annotation)).
 2. **The features.** For each code in the batch, read its file from `features/`. Pay attention to `summary`, `description`, `capabilities`, and `related`.
 3. **The project.** You may search the codebase, read ticket queues, examine help content, etc. — whatever the aspect's prompt directs.
 
@@ -24,6 +24,10 @@ Then, for each feature in the batch:
 4. **For gaps, file a ticket.** Use the aspect's `ticket-template.md` (or default). The ticket goes into `aspects/<name>/aspect.md`'s `ticket-system` and `ticket-stage`. Before filing, search for an open ticket already covering this (feature, aspect) pair to avoid duplicates. 
 5. **Record the verdict** in the run log.
 6. **Record the evidence paths.** In the run log's `## Evidence` section, note the paths you actually inspected to reach the verdict — the source files, tests, help pages, etc. These drive drift-based staleness: the runner stores them in the coverage ledger, and a future run re-audits this pair only when git shows a commit touched one of them. Report what you genuinely consulted — over-broad globs force needless re-audits, too-narrow ones let real drift slip through. Use `(none)` when there was nothing to inspect (e.g. an `n/a` verdict).
+
+## Feature settings
+
+When the aspect declares `annotation:`, the runner lists each feature's resolved settings with it: the annotation's defaults, overridden by the feature's own `aspects.<name>` block. They are the one exception to "do not edit content": when the aspect's prompt asks you to record a value, write it only under `aspects.<name>` in that feature's front-matter, only keys the annotation declares, and change nothing else in the file. The runner checks each batch's feature files afterwards ([`runner.md`](runner.md#post-batch-guard)).
 
 ## Reporting blockers
 
@@ -45,7 +49,7 @@ Write a single run log at the path the runner gives you (within the run director
 
 ## Avoid
 
-- **Do not edit code or content** to fix gaps unless instructed. Audits surface gaps; remediation is a separate, ticketed activity.
+- **Do not edit code or content** to fix gaps unless instructed. Audits surface gaps; remediation is a separate, ticketed activity. Recording feature settings (see "Feature settings") is the one edit an audit makes to a feature file.
 - **Do not expand the batch.** Stay within the features given. If you discover an adjacent gap, note it; do not chase it.
 - **Do not file a ticket for `n/a` verdicts.** Just record the reason in the run log.
 - **Do not duplicate tickets.** A grep through the open ticket queue for the feature code + aspect name is usually sufficient.

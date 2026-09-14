@@ -32,6 +32,8 @@ export interface FeatureDetail {
 
 export interface AspectSummary {
 	name: string;
+	/** The parent aspect's name, resolved as the runner resolves it; null for a top-level aspect. */
+	parent: string | null;
 	status?: string;
 	level?: string;
 	batch?: number;
@@ -102,6 +104,7 @@ export interface CoverageCell {
 
 export interface CoverageData {
 	features: Array<{ code: string; name: string; path: string; hasFile: boolean }>;
+	/** Columns in coverage order: a parent with children is left out, its children following in its place. */
 	aspects: AspectSummary[];
 	matrix: Record<string, Record<string, CoverageCell>>; // featureCode -> aspectName -> cell
 }

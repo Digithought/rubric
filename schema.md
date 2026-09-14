@@ -155,6 +155,7 @@ An aspect can list multiple cadences; the runner unions them.
 - If `prompt.md` is absent, the runner uses `rubric/defaults/aspects/<extends>/prompt.md`.
 - If `ticket-template.md` is absent, same fallback.
 - If a default doesn't exist for `<extends>`, the project must supply both.
+- A child aspect's audit composes its prompt and template with its parent's — see [`parent:`](#surfaces-parent-and-annotation).
 
 ### Staleness
 
@@ -170,7 +171,12 @@ Staleness is **derived at read time** by comparing a record's stored hashes and 
 ### Surfaces, parent and annotation
 
 - **`surfaces:`** — names from the [surface vocabulary](#surface-vocabulary), as on features. `level`, `applies-to` and `surfaces` compose: all three must admit a feature.
-- **`parent:`** — the folder name of another active aspect that has no `parent:` of its own (one level only). A child that declares `level:` declares its parent's. A parent with children has no verdicts of its own, so it declares no `annotation:`. What the hierarchy means: [principles](agent-rules/principles.md#aspect-annotations-surfaces-and-hierarchy).
+- **`parent:`** — the folder name of another active aspect that has no `parent:` of its own (one level only). A child is an ordinary folder, `aspects/<child>/`, so its name stays one path segment everywhere an aspect is named. What the hierarchy means: [principles](agent-rules/principles.md#aspect-annotations-surfaces-and-hierarchy). A child takes from its parent:
+  - **applicability** — a feature must be admitted by the parent's `level`, `applies-to` and `surfaces` as well as by the child's own, so whatever the child omits it inherits. A child that declares `level:` declares its parent's.
+  - **prompt** — its audit's prompt is the parent's, a blank line, then the child's own, which it must have (`prompt.md`, or the default for its `extends`).
+  - **ticket template** — its own, else the parent's.
+
+  `batch`, `cadence`, `ticket-system`, `ticket-stage`, `staleness` and `annotation` are not inherited: they govern running and filing the child's own audit. A parent with active children has no verdicts of its own: the runner never plans it (`run.mjs --aspect <parent>` runs its children), coverage views show its children in its place, labelled `parent/child`, and it declares no `annotation:`. A parent whose children are all retired is an ordinary aspect.
 - **`annotation:`** — the settings this aspect owns in features' [`aspects.<name>`](#aspects--settings-an-aspect-owns) blocks. Setting names match `^[a-z][a-z0-9-]*$`. `type` is `string`, `number`, `boolean`, `enum` (with a non-empty `values:` list) or `list` (of scalars); `default`, when given and not null, has that type. A setting with no default is absent from a feature's resolved settings until the feature sets it.
 
 ## Checking the spec
@@ -325,7 +331,7 @@ records:
   - A capability not due with its feature — its `target:` ranks later in `tickets/releases.md` than the feature's [effective target](#surfaces-and-target-inherit-down-the-tree) — is left out, and one that is due is hashed in its plain `- <text>` form. So the release it waits for shipping makes it a spec change, and stripping its tag afterwards changes nothing. A code the list does not hold ranks as current (most likely a release just shipped); with no release list, every capability is due.
 
   Appended to that text, each only when non-empty: `rubric-annotation: <JSON>`, this aspect's resolved settings for the feature (the annotation's defaults overlaid by the feature's `aspects.<name>` block, in declaration order); then `rubric-surfaces: <JSON>`, the sorted overlap of the feature's effective surfaces with the aspect's `surfaces:`, when the aspect declares any. Editing one aspect's block therefore stales only that aspect's records, and a feature gaining a surface stales only the aspects that audit it. A file using none of these fields, audited by an aspect with no `annotation:` or `surfaces:`, fingerprints as the sha256 of the whole file.
-- **aspect-hash** — sha256 of the resolved aspect config: `aspect.md` concatenated with the effective `prompt.md` and `ticket-template.md` (project override or rubric default, whichever the audit would use), first 12 hex. Changing the audit's instructions invalidates prior verdicts.
+- **aspect-hash** — sha256 of the resolved aspect config: `aspect.md` concatenated with the effective `prompt.md` and `ticket-template.md` (project override or rubric default, whichever the audit would use), first 12 hex. For a child, its parent's `aspect.md` comes first and the prompt and template are the ones its audit uses ([`parent:`](#surfaces-parent-and-annotation)), so editing the parent criteria-stales every child's records. Changing the audit's instructions invalidates prior verdicts.
 
 Neither the tested artifact (code, docs, help pages) nor its size is hashed — impractical and noisy. Drift over `evidence` paths, via git, is what tracks artifact change.
 

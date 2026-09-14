@@ -26,6 +26,7 @@ Options:
   --cadence <name>      Trigger to filter aspects by ('on-demand', 'on-change',
                         'daily', 'weekly', 'any'). Default: on-demand.
   --aspect <name>       Run only the named aspect (overrides --cadence filter).
+                        A parent aspect with children runs its children.
   --features <list>     Comma-separated feature codes; restricts the audit to
                         these features (default: per aspect's level/applies-to).
   --max-batches <N>     Cap total batches dispatched. Default: unlimited.

@@ -1,11 +1,34 @@
 <script lang="ts">
 	import { api } from '../lib/api.js';
-	import type { CoverageData, CoverageCell } from '../lib/types.js';
+	import type { AspectSummary, CoverageData, CoverageCell } from '../lib/types.js';
 	import { verdictColor, verdictBackground } from '../lib/runs.js';
 
 	let data = $state<CoverageData | null>(null);
 	let loading = $state(true);
 	let error: string | null = $state(null);
+
+	interface ColumnGroup {
+		parent: string | null;
+		aspects: AspectSummary[];
+	}
+
+	// Consecutive columns sharing a parent form one group, so children sit under a single parent header.
+	function groupColumns(aspects: AspectSummary[]): ColumnGroup[] {
+		const groups: ColumnGroup[] = [];
+		for (const a of aspects) {
+			const last = groups.at(-1);
+			if (last && a.parent !== null && last.parent === a.parent) last.aspects.push(a);
+			else groups.push({ parent: a.parent, aspects: [a] });
+		}
+		return groups;
+	}
+
+	let groups = $derived(data ? groupColumns(data.aspects) : []);
+	let nested = $derived(groups.some(g => g.parent !== null));
+
+	function label(a: AspectSummary): string {
+		return a.parent ? `${a.parent}/${a.name}` : a.name;
+	}
 
 	$effect(() => {
 		loading = true;
@@ -120,13 +143,32 @@
 			<table class="matrix">
 				<thead>
 					<tr>
-						<th class="corner">Feature</th>
-						{#each data.aspects as a}
-							<th class="aspect-col">
-								<a href="#/aspect/{encodeURIComponent(a.name)}">{a.name}</a>
-							</th>
+						<th class="corner" rowspan={nested ? 2 : 1}>Feature</th>
+						{#each groups as g}
+							{#if g.parent}
+								<th class="aspect-group" colspan={g.aspects.length}>
+									<a href="#/aspect/{encodeURIComponent(g.parent)}">{g.parent}</a>
+								</th>
+							{:else}
+								{#each g.aspects as a}
+									<th class="aspect-col" rowspan={nested ? 2 : 1}>
+										<a href="#/aspect/{encodeURIComponent(a.name)}">{a.name}</a>
+									</th>
+								{/each}
+							{/if}
 						{/each}
 					</tr>
+					{#if nested}
+						<tr>
+							{#each groups as g}
+								{#each g.parent ? g.aspects : [] as a}
+									<th class="aspect-col child">
+										<a href="#/aspect/{encodeURIComponent(a.name)}">{a.name}</a>
+									</th>
+								{/each}
+							{/each}
+						</tr>
+					{/if}
 				</thead>
 				<tbody>
 					{#each data.features as f}
@@ -150,7 +192,7 @@
 									style:color={cell ? verdictColor(cell.verdict) : 'var(--text-light)'}
 									style:background={cellBg(cell)}
 									style:--fresh-accent={freshnessAccent(cell?.freshness)}
-									title={tooltip(f.code, a.name, cell)}
+									title={tooltip(f.code, label(a), cell)}
 								>
 									{symbol(cell?.verdict)}
 								</td>
@@ -267,11 +309,14 @@
 		border-bottom: 1px solid var(--border);
 		text-align: center;
 	}
-	.matrix thead th {
-		background: var(--surface-raised);
+	/* Sticky on the whole head, so a second (child) header row stays attached to the first. */
+	.matrix thead {
 		position: sticky;
 		top: 0;
 		z-index: 1;
+	}
+	.matrix thead th {
+		background: var(--surface-raised);
 	}
 	.corner {
 		text-align: left;
@@ -281,11 +326,17 @@
 		min-width: 4.5rem;
 		font-weight: 600;
 	}
-	.aspect-col a {
+	.aspect-col.child {
+		font-weight: 500;
+	}
+	.aspect-group {
+		font-weight: 700;
+	}
+	.aspect-col a, .aspect-group a {
 		color: var(--text);
 		text-decoration: none;
 	}
-	.aspect-col a:hover {
+	.aspect-col a:hover, .aspect-group a:hover {
 		color: var(--primary);
 	}
 	.feature-cell {

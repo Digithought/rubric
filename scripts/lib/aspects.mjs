@@ -1,18 +1,26 @@
 /**
  * Aspect discovery and override resolution.
  *
- * An aspect is **active** for a project when `aspects/<name>/aspect.md` exists.
- * Per-aspect files (prompt, ticket-template) are resolved with project overrides
- * winning; otherwise we fall back to `rubric/defaults/aspects/<extends>/`, where
- * `extends` defaults to the aspect's own folder name.
+ * An aspect is **active** for a project when `aspects/<name>/aspect.md` exists
+ * and is not retired. Per-aspect files (prompt, ticket-template) are resolved
+ * with project overrides winning; otherwise we fall back to
+ * `rubric/defaults/aspects/<extends>/`, where `extends` defaults to the aspect's
+ * own folder name.
+ *
+ * A child aspect (`parent: <name>`) composes with its parent — `readPrompt`,
+ * `readTicketTemplate`, and `aspectApplies` in features.mjs. A parent with
+ * active children has no verdicts of its own (`hasVerdicts`).
  */
 
-import { readdir, stat, readFile } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { existsSync } from 'node:fs';
 import { isMapping, readFrontmatterWithLines } from './frontmatter.mjs';
 
 /**
+ * Active aspects by name. `promptPath` and `ticketTemplatePath` are the
+ * aspect's own files; what an audit of a child uses also draws on its parent.
+ *
  * @returns {Promise<Array<{
  *   name:string,
  *   path:string,
@@ -22,6 +30,8 @@ import { isMapping, readFrontmatterWithLines } from './frontmatter.mjs';
  *   promptSource:'project'|'default'|null,
  *   ticketTemplatePath:string|null,
  *   ticketTemplateSource:'project'|'default'|null,
+ *   parent:object|null,
+ *   children:string[],
  * }>>}
  */
 export async function discoverActiveAspects(aspectsDir, defaultsDir) {
@@ -55,23 +65,91 @@ export async function discoverActiveAspects(aspectsDir, defaultsDir) {
 			promptSource,
 			ticketTemplatePath,
 			ticketTemplateSource,
+			parent: null,
+			children: [],
 		});
 	}
+	out.sort((a, b) => compareNames(a.name, b.name));
+	linkParents(out);
 	return out;
 }
 
-/** Read the aspect's resolved prompt body (no front-matter trimming — prompts have none). */
+const compareNames = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+
+/**
+ * Resolve each `parent:` to the parent's record and list each parent's
+ * children, by name. Aspects nest one level: a `parent:` naming the aspect
+ * itself, an inactive aspect, or an aspect with a `parent:` of its own stays
+ * unresolved (`parent` null) — validateSpec reports each — so no chain or
+ * cycle is ever followed.
+ */
+function linkParents(aspects) {
+	const byName = new Map(aspects.map(a => [a.name, a]));
+	for (const aspect of aspects) {
+		const parent = byName.get(aspect.data.parent);
+		if (!parent || parent === aspect || parent.data.parent != null) continue;
+		aspect.parent = parent;
+		parent.children.push(aspect.name);
+	}
+}
+
+/**
+ * The prompt an audit of this aspect uses: for a child, its parent's prompt, a
+ * blank line, then its own (the delta); otherwise its own.
+ */
 export async function readPrompt(aspect) {
+	if (!aspect.parent) return readOwnPrompt(aspect);
+	if (!aspect.parent.promptPath) {
+		throw new Error(`Aspect "${aspect.name}": its parent "${aspect.parent.name}" has no prompt (project override absent and no default exists).`);
+	}
+	const base = await readFile(aspect.parent.promptPath, 'utf-8');
+	return `${base.trimEnd()}\n\n${await readOwnPrompt(aspect)}`;
+}
+
+async function readOwnPrompt(aspect) {
 	if (!aspect.promptPath) {
 		throw new Error(`Aspect "${aspect.name}" has no prompt (project override absent and no default exists).`);
 	}
 	return readFile(aspect.promptPath, 'utf-8');
 }
 
-/** Read the aspect's resolved ticket template body, or null. */
+/** The ticket template an audit of this aspect uses — its own, else its parent's — or null. */
 export async function readTicketTemplate(aspect) {
-	if (!aspect.ticketTemplatePath) return null;
-	return readFile(aspect.ticketTemplatePath, 'utf-8');
+	const path = aspect.ticketTemplatePath ?? aspect.parent?.ticketTemplatePath ?? null;
+	return path ? readFile(path, 'utf-8') : null;
+}
+
+/** Whether audits of this aspect record verdicts: a parent with active children has none of its own. */
+export function hasVerdicts(aspect) {
+	return (aspect.children?.length ?? 0) === 0;
+}
+
+/**
+ * The aspects `--aspect <name>` selects: a parent's children when it has any,
+ * else the named aspect itself; [] when no active aspect has that name.
+ */
+export function aspectsNamed(aspects, name) {
+	const named = aspects.find(a => a.name === name);
+	if (!named) return [];
+	return hasVerdicts(named) ? [named] : aspects.filter(a => a.parent === named);
+}
+
+/**
+ * The aspects a coverage view shows, in its order: every aspect with verdicts,
+ * top-level aspects by name, and each parent's children by name in the
+ * parent's place.
+ */
+export function coverageColumns(aspects) {
+	const place = (a) => [a.parent?.name ?? a.name, a.parent ? a.name : ''];
+	return aspects.filter(hasVerdicts).sort((a, b) => {
+		const [pa, pb] = [place(a), place(b)];
+		return compareNames(pa[0], pb[0]) || compareNames(pa[1], pb[1]);
+	});
+}
+
+/** How coverage views name an aspect: `parent/child` for a child, else its name. */
+export function aspectLabel(aspect) {
+	return aspect.parent ? `${aspect.parent.name}/${aspect.name}` : aspect.name;
 }
 
 /**

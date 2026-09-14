@@ -4,16 +4,18 @@
  *
  * For a given trigger (cadence) it:
  *   1. Discovers active aspects under `aspects/<name>/`.
- *   2. Filters them by cadence (and optional --aspect override).
- *   3. For each aspect, walks `features/`, applies the aspect's `level` and
- *      `applies-to`, then splits into batches per `batch:`.
- *   4. Records the plan as a run manifest in `.runs/<runId>/manifest.md`, then
+ *   2. Plans (`lib/plan.mjs`): filters aspects by cadence, or `--aspect` (a
+ *      parent with children runs its children — it has no verdicts of its own);
+ *      for each aspect walks `features/`, applies its `level`, `applies-to` and
+ *      `surfaces` (a child's parent's too), then splits into batches per `batch:`.
+ *   3. Records the plan as a run manifest in `.runs/<runId>/manifest.md`, then
  *      dispatches one audit agent per batch, driving each task through the
  *      manifest state machine (pending → running → done/failed/blocked).
- *   5. Each agent owns its own artifacts: gap tickets land in the project's
+ *   4. Each agent owns its own artifacts: gap tickets land in the project's
  *      ticket queue; the per-batch run log lands in the run dir. The runner is
  *      the sole writer of the manifest — it lifts verdicts and blockers from
- *      each agent's run log after the batch completes.
+ *      each agent's run log after the batch completes, and notes any edit the
+ *      audit made to its batch's feature files outside its own settings block.
  *
  * Blockers (shared conditions an agent reports — DB down, build broken) are
  * injected into later batches' prompts and, when global+blocking, short-circuit
@@ -27,16 +29,17 @@ import { mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 
 import { parseArgs } from './lib/cli.mjs';
-import { filterByCadence, readPrompt, readTicketTemplate } from './lib/aspects.mjs';
-import { filterFeatures, findFeature } from './lib/features.mjs';
-import { exitIfSpecInvalid, loadSpec } from './lib/validate.mjs';
-import { batchFeatures } from './lib/batch.mjs';
+import { hasVerdicts, readPrompt, readTicketTemplate } from './lib/aspects.mjs';
+import { findFeature } from './lib/features.mjs';
+import { exitIfSpecInvalid, loadSpec, validateSpec } from './lib/validate.mjs';
+import { planAspects, selectAspects } from './lib/plan.mjs';
 import { buildAuditPrompt } from './lib/prompt.mjs';
 import { runAgent } from './lib/agent.mjs';
 import { readRun } from './lib/runs.mjs';
 import { gitHead } from './lib/git.mjs';
 import { readLedger, writeLedger, upsertRecord } from './lib/ledger.mjs';
 import { cellFor, featureFingerprintFor, resolveAspectHash } from './lib/coverage-cell.mjs';
+import { editedOutsideBlock, snapshotBatch } from './lib/edit-guard.mjs';
 import { resolveStaleness, isStale } from './lib/freshness.mjs';
 import {
 	createManifest, runDir, writeManifest, readManifest, resolveRunId,
@@ -77,22 +80,15 @@ async function freshRun(opts, ctx) {
 		return;
 	}
 
-	let aspects = allAspects;
-	if (opts.aspect) {
-		aspects = aspects.filter(a => a.name === opts.aspect);
-		if (aspects.length === 0) {
-			console.error(`Aspect "${opts.aspect}" is not active. Active aspects:`);
-			allAspects.forEach(a => console.error(`  ${a.name}`));
-			process.exit(1);
-		}
-	} else {
-		aspects = filterByCadence(aspects, opts.cadence);
-		if (aspects.length === 0) {
-			console.log(`No active aspects match cadence "${opts.cadence}".`);
-			return;
-		}
+	if (opts.aspect && !allAspects.some(a => a.name === opts.aspect)) {
+		console.error(`Aspect "${opts.aspect}" is not active. Active aspects:`);
+		allAspects.forEach(a => console.error(`  ${a.name}`));
+		process.exit(1);
 	}
-	if (Number.isFinite(opts.maxAspects)) aspects = aspects.slice(0, opts.maxAspects);
+	if (selectAspects(allAspects, opts).length === 0) {
+		console.log(`No active aspects match cadence "${opts.cadence}".`);
+		return;
+	}
 
 	if (allFeatures.length === 0) {
 		console.error(`No features found under features/. Did you run rubric init?`);
@@ -100,45 +96,22 @@ async function freshRun(opts, ctx) {
 	}
 
 	// ── Plan ──
-	const plan = [];
-	for (const aspect of aspects) {
-		let features = filterFeatures(allFeatures, aspect);
-		if (opts.features) {
-			const set = new Set(opts.features);
-			features = features.filter(f => set.has(f.code));
-		}
-		// --stale-only: keep only pairs whose ledger record is missing or stale,
-		// most-churned first. Fresh pairs are pruned before batching.
-		if (opts.staleOnly && features.length) {
-			const before = features.length;
-			features = await narrowToStale(features, aspect, { aspectsDir, repoRoot, releases });
-			const pruned = before - features.length;
-			if (pruned) console.log(`  ${aspect.name}: pruned ${pruned} fresh, ${features.length} stale/missing to audit`);
-		}
-		if (features.length === 0) {
-			const why = opts.staleOnly ? 'nothing stale (all fresh) or no features match' : 'no features match level/applies-to/surfaces/--features';
-			plan.push({ aspect, batches: [], skipped: why });
-			continue;
-		}
-		const batches = batchFeatures(features, aspect.data.batch || 8);
-		plan.push({ aspect, batches });
-	}
-
-	// Cap total batches across plan.
-	let remaining = opts.maxBatches;
-	for (const item of plan) {
-		if (!Number.isFinite(remaining)) break;
-		if (remaining <= 0) { item.batches = []; continue; }
-		if (item.batches.length > remaining) item.batches = item.batches.slice(0, remaining);
-		remaining -= item.batches.length;
-	}
+	// --stale-only: keep only pairs whose ledger record is missing or stale,
+	// most-churned first. Fresh pairs are pruned before batching.
+	const narrowToStale = async (features, aspect) => {
+		const stale = await staleFeatures(features, aspect, { aspectsDir, repoRoot, releases });
+		const pruned = features.length - stale.length;
+		if (pruned) console.log(`  ${aspect.name}: pruned ${pruned} fresh, ${stale.length} stale/missing to audit`);
+		return stale;
+	};
+	const plan = await planAspects({ aspects: allAspects, features: allFeatures, opts, narrowToStale });
 
 	// ── Print plan ──
 	const totalBatches = plan.reduce((n, p) => n + p.batches.length, 0);
 	const totalFeatures = plan.reduce((n, p) => n + p.batches.flat().length, 0);
 	console.log(`rubric run`);
 	console.log(`  cadence:      ${opts.aspect ? `(--aspect ${opts.aspect})` : opts.cadence}`);
-	console.log(`  aspects:      ${aspects.length}`);
+	console.log(`  aspects:      ${plan.length}`);
 	console.log(`  batches:      ${totalBatches}`);
 	console.log(`  features:     ${totalFeatures}`);
 	console.log(`  agent:        ${opts.agent}`);
@@ -146,7 +119,9 @@ async function freshRun(opts, ctx) {
 	console.log('');
 	for (const { aspect, batches, skipped } of plan) {
 		const badge = aspect.promptSource === 'project' ? 'project' : (aspect.promptSource === 'default' ? 'default' : 'NO PROMPT');
-		console.log(`  ${aspect.name}  (prompt: ${badge}, level: ${aspect.data.level || 'any'}, batch: ${aspect.data.batch || 8})`);
+		const parent = aspect.parent ? `, parent: ${aspect.parent.name}` : '';
+		const level = aspect.data.level || aspect.parent?.data.level || 'any';
+		console.log(`  ${aspect.name}  (prompt: ${badge}${parent}, level: ${level}, batch: ${aspect.data.batch || 8})`);
 		if (skipped) { console.log(`    skipped — ${skipped}`); continue; }
 		batches.forEach((b, i) => {
 			console.log(`    batch ${i + 1}/${batches.length}: ${b.map(f => f.code).join(', ')}`);
@@ -205,6 +180,11 @@ async function resume(opts, ctx) {
 		if (!aspect) {
 			console.warn(`  ${task.id}: aspect "${task.aspect}" no longer active — skipping.`);
 			setTaskStatus(manifest, task.id, 'skipped', { note: 'aspect inactive' });
+			continue;
+		}
+		if (!hasVerdicts(aspect)) {
+			console.warn(`  ${task.id}: aspect "${task.aspect}" now has children (${aspect.children.join(', ')}) — skipping.`);
+			setTaskStatus(manifest, task.id, 'skipped', { note: 'aspect now has children' });
 			continue;
 		}
 		const features = task.features.map(c => findFeature(allFeatures, c)).filter(Boolean);
@@ -316,9 +296,12 @@ async function dispatchLoop({ opts, aspectsDir, runsDir, repoRoot, releases, man
 
 		console.log(`\n→ ${d.id}: ${d.features.map(f => f.code).join(', ')}`
 			+ (knownBlockers.length ? `  (warned of ${knownBlockers.length} blocker(s))` : ''));
+		const beforeAudit = snapshotBatch(d.features, d.aspect.name);
 		const t0 = Date.now();
 		const result = await runAgent({ agent: opts.agent, prompt, cwd: repoRoot, logFile });
 		const secs = Math.round((Date.now() - t0) / 1000);
+		const guardNote = await guardBatchEdits({ repoRoot, aspect: d.aspect, features: d.features, beforeAudit })
+			.catch((e) => { console.error(`  post-batch guard failed: ${e.message}`); return undefined; });
 
 		// Lift verdicts + blockers from the agent's run log.
 		const finishedAt = new Date().toISOString();
@@ -335,11 +318,13 @@ async function dispatchLoop({ opts, aspectsDir, runsDir, repoRoot, releases, man
 			setTaskStatus(manifest, d.id, 'done', {
 				finished: finishedAt,
 				verdicts: reported.verdictCounts || undefined,
+				note: guardNote,
 			});
 		} else {
+			const failure = result.timedOut ? 'idle timeout' : `exit ${result.exitCode}` + (existsSync(runLogPath) ? '' : ', no run log');
 			setTaskStatus(manifest, d.id, 'failed', {
 				finished: finishedAt,
-				note: result.timedOut ? 'idle timeout' : `exit ${result.exitCode}` + (existsSync(runLogPath) ? '' : ', no run log'),
+				note: guardNote ? `${failure}; ${guardNote}` : failure,
 			});
 			// Backstop: if batches keep failing and no agent named a cause, make
 			// the pattern visible (degraded, so it warns but doesn't halt).
@@ -385,6 +370,35 @@ async function dispatchLoop({ opts, aspectsDir, runsDir, repoRoot, releases, man
 	if (incomplete > 0) {
 		console.log(`Resume with:  node rubric/scripts/run.mjs --resume ${manifest.run}`);
 	}
+}
+
+// ── Post-batch guard ─────────────────────────────────────────────────────────
+
+/**
+ * A development-time check after each batch: it warns and never fails the task.
+ * The one edit an audit may make to its batch's feature files is its own
+ * `aspects.<name>` block. Any other edit, and any spec error in those files
+ * afterwards, is printed and returned as the task's manifest note (undefined
+ * when there is none). The ledger still records the verdicts; the edit changes
+ * the feature's fingerprint, so it shows as spec-stale on the other aspects.
+ */
+// NOTE: batches are dispatched one at a time, so this before/after comparison cannot see another audit's edit; if dispatch is parallelised, a concurrent audit's edit to its own block would be reported against this batch — snapshot per aspect's own block only.
+async function guardBatchEdits({ repoRoot, aspect, features, beforeAudit }) {
+	const notes = [];
+	const edited = editedOutsideBlock(beforeAudit, features, aspect.name);
+	if (edited.length) {
+		notes.push(`edited outside aspects.${aspect.name}: ${edited.join(', ')}`);
+		console.warn(`  ⚠ ${notes.at(-1)}`);
+	}
+	const files = features.map(f => `${rel(f.path, repoRoot)}:`);
+	const errors = validateSpec({ repoRoot, ...(await loadSpec(repoRoot)) })
+		.filter(error => files.some(file => error.startsWith(file)));
+	if (errors.length) {
+		notes.push(`spec errors after audit: ${errors.join('; ')}`);
+		console.warn('  ⚠ spec errors after audit:');
+		for (const error of errors) console.warn(`    ${error}`);
+	}
+	return notes.length ? notes.join('; ') : undefined;
 }
 
 // ── Coverage ledger ──────────────────────────────────────────────────────────
@@ -440,12 +454,12 @@ function parseTicketPath(note) {
 }
 
 /**
- * Narrow a feature list to pairs whose ledger record is missing or stale, ordered
+ * The features whose ledger record is missing or stale, ordered
  * most-churned-first. Freshness is derived here (never stored) by `cellFor`, as
  * `coverage.mjs` and the UI derive it. NB: this is unrelated to the runner's
  * `staleSet` (unverified blockers) — different axis, deliberately different names.
  */
-async function narrowToStale(features, aspect, { aspectsDir, repoRoot, releases }) {
+async function staleFeatures(features, aspect, { aspectsDir, repoRoot, releases }) {
 	const { records } = await readLedger(aspectsDir, aspect.name);
 	const staleness = resolveStaleness(aspect.data);
 	const aspectHash = await resolveAspectHash(aspect);

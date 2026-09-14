@@ -8,6 +8,9 @@
 	let loading = $state(true);
 	let error: string | null = $state(null);
 
+	// Each top-level aspect followed by its children, so a child reads as part of its parent.
+	let ordered = $derived(aspects.flatMap(a => (a.parent ? [] : [a, ...aspects.filter(child => child.parent === a.name)])));
+
 	$effect(() => {
 		loading = true;
 		Promise.all([api.aspects(), api.defaultAspects()])
@@ -46,8 +49,8 @@
 	</div>
 {:else}
 	<div class="aspect-list">
-		{#each aspects as a}
-			<a class="card" href="#/aspect/{encodeURIComponent(a.name)}">
+		{#each ordered as a}
+			<a class="card" class:child={a.parent !== null} href="#/aspect/{encodeURIComponent(a.name)}">
 				<div class="card-header">
 					<span class="aspect-name">{a.name}</span>
 					<StatusBadge status={a.status} size="sm" />
@@ -154,6 +157,9 @@
 		box-shadow: var(--shadow-lg);
 		transform: translateY(-1px);
 		text-decoration: none;
+	}
+	.card.child {
+		margin-left: 1.5rem;
 	}
 	.card-header {
 		display: flex;

@@ -192,8 +192,10 @@ export async function readSurfaceVocabulary(featuresDir) {
 
 /**
  * Whether an aspect audits a feature: its `level`, `applies-to` and `surfaces`
- * must all admit it. An aspect with `surfaces:` applies only to features whose
- * effective surfaces intersect them; a feature with none is excluded.
+ * must all admit it, and for a child its parent's must too — so whatever a
+ * child leaves out, it inherits. An aspect with `surfaces:` applies only to
+ * features whose effective surfaces intersect them; a feature with none is
+ * excluded.
  *
  * Retired features are dropped unconditionally, the mirror of the
  * `status === 'retired'` skip in `aspects.mjs`. A retired feature's
@@ -203,6 +205,12 @@ export async function readSurfaceVocabulary(featuresDir) {
  */
 export function aspectApplies(aspect, feature) {
 	if (feature.data?.status === 'retired') return false;
+	if (aspect.parent && !admits(aspect.parent, feature)) return false;
+	return admits(aspect, feature);
+}
+
+/** Whether an aspect's own `level`, `applies-to` and `surfaces` admit the feature. */
+function admits(aspect, feature) {
 	const level = aspect.data.level || 'any';
 	// `branch` audits cover both `root` and intermediate nodes that have children;
 	// our walker labels actual roots as `root`, so accept `branch` strictly.
