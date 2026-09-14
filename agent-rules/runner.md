@@ -13,6 +13,7 @@ The runner orchestrates audits across aspects without overflowing any single age
 2. **Per aspect, resolve feature set.**
    - Walk `features/` and select features matching `level:` (root / branch / leaf / any).
    - Apply `applies-to.include` / `applies-to.exclude` and the aspect's `surfaces:` if present — for a child, its parent's as well (see [`schema.md`](../schema.md)).
+   - Keep the features in the run's release target — see "Release scoping" below.
    - For `on-change`, optionally narrow to features whose source artifacts changed since the last run (see "on-change scoping" below).
 3. **Per aspect, batch the features.** Split into groups of size `batch:`. The order does not matter unless the aspect's prompt says otherwise.
 4. **Open a run.** Allocate a `runId` and create `.runs/<runId>/manifest.md` (schema in [`schema.md`](../schema.md)) listing every batch as a task with status `pending`. This manifest is the run's checklist and blocker blackboard; **the runner is its sole writer.**
@@ -32,7 +33,7 @@ The reference runner (`rubric/scripts/run.mjs`) dispatches **sequentially**, whi
 
 Alongside the manifest, the runner maintains a durable, git-committed **coverage ledger** per aspect, `aspects/<name>/coverage.md` (schema in [`schema.md`](../schema.md)). The manifest is the ephemeral per-run blackboard; the ledger is the cumulative record of what has been audited and whether it still holds.
 
-After a batch completes, for each **non-blocked** verdict the runner upserts a ledger record: the verdict, `audited` timestamp, current `audited-commit` (git HEAD), the **feature-hash** and **aspect-hash** (see schema), the **evidence** paths from the run log, the `run` id, and any gap `ticket`. A `blocked` verdict leaves the prior record untouched — the audit didn't actually run. The runner is the sole writer, exactly as with the manifest.
+After a batch completes, for each **non-blocked** verdict the runner upserts a ledger record: the verdict, `audited` timestamp, current `audited-commit` (git HEAD), the **feature-hash** and **aspect-hash** (see schema), the **evidence** paths from the run log, the `run` id, and any gap `ticket`. A `blocked` verdict leaves the prior record untouched — the audit didn't actually run. The runner is the sole writer, exactly as with the manifest. A run for a later release writes no records (see "Release scoping").
 
 ## Post-batch guard
 
@@ -43,6 +44,23 @@ The one edit an audit may make to its batch's feature files is its own `aspects.
 `run.mjs --stale-only` narrows each aspect's feature set to pairs whose ledger record is **missing** or stale, then batches only those. Freshness is derived (never stored) by comparing each record's stored hashes and `audited-commit` against the current files and git history — the precedence and states are defined in [`schema.md`](../schema.md#coverage-ledger-schema). The dominant signal is **drift**: commits touching a record's evidence paths since it was audited, so a quiet repo re-audits nothing and a churning feature re-audits fast. Records are ordered most-churned-first so the highest-risk pairs run before any batch cap bites.
 
 This is the everyday driver of incremental audits: run a full sweep once to seed the ledger, then `--stale-only` on cadence to keep only what actually moved under review.
+
+## Release scoping
+
+`run.mjs --target` limits a run to one release's work ([principles](principles.md#current-release-assumption)). A feature ranks by its effective `target:`, a capability by its own tag, else its feature's. No tag, or the current release's code, ranks 0; a later code ranks at its position in `tickets/releases.md`; a code the list does not hold ranks 0, since it most likely names a release that has just shipped.
+
+| `--target` | A feature is planned when | Capabilities audited | Listed as deferred |
+|---|---|---|---|
+| `current` (the default; naming the current code is the same) | it ranks 0 | those ranking 0 | the rest, each with its release |
+| a later code, ranking r | it ranks r, or ranks earlier and has a capability ranking r | those ranking r | for a feature ranking r, its later capabilities; an earlier feature is audited for its r capabilities only |
+| `all` | always | all | none |
+
+- The target applies after `level`, `applies-to`, `surfaces` and `--features`. A code `--features` names that the target leaves out is printed as `excluded by target:` under the aspect in the plan. A current feature whose capabilities are all deferred is still planned: its description is current work.
+- With no `tickets/releases.md`, or one with no entries, everything is current: nothing is deferred, and a release code is refused (exit 2), as is a code the list does not hold.
+- The audit prompt lists deferred capabilities under their feature, and an earlier feature's capabilities under `audit only:` ([`audit.md`](audit.md#release-scope)). A later-release run's gap tickets go to that release's deferral folder, `tickets/backlog/<CODE>/`.
+- **Ledger.** `current` and `all` runs write the coverage ledger. A later-release run does not, and says so once, because the ledger records current coverage; for the same reason `--stale-only` is refused with a later release. A record's `feature-hash` is always computed for the current scope, so a record from an `all` run means what one from a `current` run does, and the later write wins.
+- **Resume.** The manifest records the target ([`schema.md`](../schema.md#run-manifest-schema)) and a resumed run keeps it: `--target` may repeat it but not change it (exit 2). A manifest written before release scoping resumes as `all`; a recorded release that has shipped since resumes as `current`. A feature no longer in the target is dropped from its unfinished task, and a task left with no features is `skipped`.
+- `--cadence` and `--aspect` pick aspects; `--target` picks features. They compose.
 
 ## On-change scoping
 

@@ -5,6 +5,7 @@
  *   rubric run [--cadence <on-demand|on-change|daily|weekly|any>]
  *              [--aspect <name>]
  *              [--features <CODE,CODE,...>]
+ *              [--target <current|all|CODE>]
  *              [--max-batches <N>]
  *              [--max-aspects <N>]
  *              [--agent <claude|...>]
@@ -15,10 +16,13 @@
  *
  * Defaults:
  *   cadence: on-demand
+ *   target: current
  *   max-batches: unlimited
  *   max-aspects: unlimited
  *   agent: claude
  */
+
+import { resolveTarget } from './scope.mjs';
 
 const HELP = `rubric run — orchestrate aspect audits over the feature inventory.
 
@@ -29,6 +33,13 @@ Options:
                         A parent aspect with children runs its children.
   --features <list>     Comma-separated feature codes; restricts the audit to
                         these features (default: per aspect's level/applies-to).
+  --target <release>    Which release's work to audit. 'current' (default):
+                        features and capabilities due in the current release,
+                        later capabilities listed as deferred. A later code
+                        from tickets/releases.md: only work deferred to it; gap
+                        tickets go to tickets/backlog/<CODE>/ and the coverage
+                        ledger is not written. 'all': everything. A resumed run
+                        keeps the target it was planned under.
   --max-batches <N>     Cap total batches dispatched. Default: unlimited.
   --max-aspects <N>     Cap aspects considered. Default: unlimited.
   --agent <name>        Agent adapter to invoke. Default: claude.
@@ -58,6 +69,7 @@ export function parseArgs(argv) {
 		cadence: 'on-demand',
 		aspect: null,
 		features: null,
+		target: null,
 		maxBatches: Infinity,
 		maxAspects: Infinity,
 		agent: 'claude',
@@ -77,6 +89,7 @@ export function parseArgs(argv) {
 			case '--cadence': opts.cadence = consume(argv, ++i, a); break;
 			case '--aspect':  opts.aspect  = consume(argv, ++i, a); break;
 			case '--features': opts.features = consume(argv, ++i, a).split(',').map(s => s.trim()).filter(Boolean); break;
+			case '--target': opts.target = consume(argv, ++i, a); break;
 			case '--max-batches': opts.maxBatches = parseInt(consume(argv, ++i, a), 10); break;
 			case '--max-aspects': opts.maxAspects = parseInt(consume(argv, ++i, a), 10); break;
 			case '--agent': opts.agent = consume(argv, ++i, a); break;
@@ -93,6 +106,35 @@ export function parseArgs(argv) {
 		}
 	}
 	return opts;
+}
+
+/**
+ * The release target a run plans and records under (agent-rules/runner.md
+ * § Release scoping), or `{ error }` — a usage error, exit 2. A fresh run takes
+ * `--target`. A resumed run takes its manifest's, which `--target` may repeat
+ * but not change: `all` for a manifest written before targets existed, the
+ * scope it was planned under, and `current` for a release shipped since, whose
+ * work is current now.
+ */
+export function runTarget(opts, releases, manifest = null) {
+	const target = manifest ? resumedTarget(opts.target, releases, manifest) : resolveTarget(opts.target, releases);
+	if (!target.error && opts.staleOnly && target.kind === 'release') {
+		return { error: `--stale-only cannot be combined with --target ${target.code}: the coverage ledger records current coverage only` };
+	}
+	return target;
+}
+
+function resumedTarget(asked, releases, manifest) {
+	const recorded = manifest.target ?? 'all';
+	const planned = resolveTarget(recorded, releases);
+	const target = planned.error ? resolveTarget('current', releases) : planned;
+	if (asked == null) return target;
+	const given = resolveTarget(asked, releases);
+	if (given.error) return given;
+	if (given.kind !== target.kind || given.code !== target.code) {
+		return { error: `--target ${asked} differs from run ${manifest.run}'s target, ${recorded} — resume without --target` };
+	}
+	return target;
 }
 
 function consume(argv, i, flag) {

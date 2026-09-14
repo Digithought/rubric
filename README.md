@@ -110,7 +110,7 @@ The audit agent uses **judgement** to decide whether an aspect applies to a give
 
 ## Runs
 
-Each orchestration pass is a **run**, identified by a `runId` and homed in `.runs/<runId>/`. The runner records the plan as a `manifest.md` — a per-task checklist plus a **blocker blackboard** — and is its sole writer. When an audit agent reports a shared blocker (a dependency down, a broken build), the runner injects it into later batches' prompts and, for run-wide blockers, stops dispatching so subsequent agents don't waste cycles rediscovering the same wall. Interrupted or partial runs resume with `--resume <runId|last>`, which skips completed tasks. See [`agent-rules/runner.md`](agent-rules/runner.md) and the run-manifest schema in [`schema.md`](schema.md).
+Each orchestration pass is a **run**, identified by a `runId` and homed in `.runs/<runId>/`. The runner records the plan as a `manifest.md` — a per-task checklist plus a **blocker blackboard** — and is its sole writer. When an audit agent reports a shared blocker (a dependency down, a broken build), the runner injects it into later batches' prompts and, for run-wide blockers, stops dispatching so subsequent agents don't waste cycles rediscovering the same wall. Interrupted or partial runs resume with `--resume <runId|last>`, which skips completed tasks. A run audits the current release's work unless `--target` names a later release or `all`; see [release scoping](agent-rules/runner.md#release-scoping). See [`agent-rules/runner.md`](agent-rules/runner.md) and the run-manifest schema in [`schema.md`](schema.md).
 
 ## Coverage & staleness
 
@@ -123,6 +123,7 @@ node rubric/scripts/coverage.mjs                    # freshness matrix across al
 node rubric/scripts/coverage.mjs --aspect code --stale   # just the stale/missing pairs
 node rubric/scripts/coverage.mjs pin SCN-ENT-CMP code    # reaffirm without re-auditing
 node rubric/scripts/coverage.mjs accept SCN-HIER code    # keep verdict, rehash to current spec
+node rubric/scripts/coverage.mjs burn-down          # the current release's outstanding work
 node rubric/scripts/run.mjs --stale-only            # re-audit only what drifted, most-churned first
 ```
 
@@ -148,8 +149,10 @@ node rubric/scripts/run.mjs --help                 # full options
 node rubric/scripts/run.mjs --aspect code --dry-run
 node rubric/scripts/run.mjs --cadence weekly       # all aspects with that cadence
 node rubric/scripts/run.mjs --stale-only           # re-audit only stale/missing pairs
+node rubric/scripts/run.mjs --target GA            # audit only the work deferred to release GA
 node rubric/scripts/run.mjs --resume last          # pick up an interrupted run
 node rubric/scripts/coverage.mjs                   # freshness matrix; pin / accept subcommands
+node rubric/scripts/coverage.mjs burn-down         # current release: not implemented, open coverage cells
 ```
 
 **UI** (Svelte 5 + Vite, in `rubric/ui/`). Browse features, inspect aspect configs and resolved prompts, view run logs, and read the coverage matrix — color-coded by freshness — at a glance.

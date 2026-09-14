@@ -10,6 +10,7 @@
  *   coverage.mjs --aspect <name>       restrict to one aspect (a parent: its children)
  *   coverage.mjs --stale               only stale/missing rows
  *   coverage.mjs --json                machine-readable dump
+ *   coverage.mjs burn-down [--json]    the current release's outstanding spec work
  *   coverage.mjs pin <CODE> <aspect>   reaffirm a record (suppress drift/age)
  *   coverage.mjs accept <CODE> <aspect>  rehash to current spec/criteria, keep verdict
  *
@@ -27,6 +28,8 @@ import { exitIfSpecInvalid, loadSpec } from './lib/validate.mjs';
 import { readLedger, writeLedger } from './lib/ledger.mjs';
 import { cachedFeatureReader, cellFor, featureFingerprintFor, resolveAspectHash } from './lib/coverage-cell.mjs';
 import { resolveStaleness, isStale } from './lib/freshness.mjs';
+import { burnDown, formatBurnDown } from './lib/burn-down.mjs';
+import { featureRank } from './lib/scope.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -36,6 +39,7 @@ const HELP = `rubric coverage — inspect + hand-tune the coverage ledgers.
 
 Usage:
   coverage.mjs [--aspect <name>] [--stale] [--json]   freshness matrix
+  coverage.mjs burn-down [--json]                     the current release's outstanding work
   coverage.mjs pin <FEATURE_CODE> <aspect>            reaffirm a record
   coverage.mjs accept <FEATURE_CODE> <aspect>         rehash to current spec/criteria
 
@@ -43,8 +47,13 @@ Options:
   --aspect <name>   Restrict the matrix to one active aspect; a parent aspect
                     with children shows its children.
   --stale           Show only rows with a stale or missing cell.
-  --json            Emit JSON instead of the text matrix.
+  --json            Emit JSON instead of the text matrix (or burn-down report).
   -h, --help        This message.
+
+burn-down lists, for the current release (the first in tickets/releases.md;
+everything, without one): childless features not implemented, then each aspect's
+missing, stale, gap, partial or blocked cells for features due now. Top-level
+backlog tickets are the rest of the burn-down; tess lists those.
 `;
 
 // Single-char freshness symbols for the matrix.
@@ -62,12 +71,16 @@ async function main() {
 	const aspectsDir = join(repoRoot, 'aspects');
 
 	const sub = argv[0] && !argv[0].startsWith('-') ? argv[0] : null;
-	if (sub && sub !== 'pin' && sub !== 'accept') { console.error(`Unknown subcommand: ${sub}`); console.error(HELP); process.exit(2); }
+	if (sub && !['pin', 'accept', 'burn-down'].includes(sub)) { console.error(`Unknown subcommand: ${sub}`); console.error(HELP); process.exit(2); }
 
 	const spec = await loadSpec(repoRoot);
 	exitIfSpecInvalid(repoRoot, spec);
 	const { aspects: allAspects, features: allFeatures, releases } = spec;
 
+	if (sub === 'burn-down') {
+		await printBurnDown(argv.slice(1), { aspectsDir, repoRoot, allAspects, allFeatures, releases });
+		return;
+	}
 	if (sub) {
 		await override(sub, argv.slice(1), { aspectsDir, repoRoot, allAspects, allFeatures, releases });
 		return;
@@ -112,8 +125,8 @@ async function warnIgnoredParentLedgers(aspects, aspectsDir) {
 
 /**
  * For each aspect, in column order: load its ledger, resolve staleness +
- * aspect-hash, and compute a cell (`cellFor`) for every applicable feature.
- * Returns a structure the renderers walk.
+ * aspect-hash, and compute a cell (`cellFor`, with the record's gap `ticket`)
+ * for every applicable feature. Returns a structure the renderers walk.
  */
 async function buildMatrix(aspects, allFeatures, { aspectsDir, repoRoot, releases }) {
 	const readText = cachedFeatureReader();
@@ -126,7 +139,7 @@ async function buildMatrix(aspects, allFeatures, { aspectsDir, repoRoot, release
 		const cells = new Map();   // code → cell
 		for (const feature of filterFeatures(allFeatures, aspect)) {
 			const record = records[feature.code] ?? null;
-			cells.set(feature.code, cellFor({ feature, aspect, record, aspectHash, staleness, releases, repoRoot, readText }));
+			cells.set(feature.code, { ...cellFor({ feature, aspect, record, aspectHash, staleness, releases, repoRoot, readText }), ticket: record?.ticket ?? null });
 			codeSet.add(feature.code);
 		}
 		columns.push({ aspect: aspect.name, label: aspectLabel(aspect), parent: aspect.parent?.name ?? null, cells });
@@ -189,6 +202,23 @@ function printJson({ columns, rows }, opts) {
 		out.features.push({ code: r.code, name: r.name, cells });
 	}
 	console.log(JSON.stringify(out, null, 2));
+}
+
+// ── Burn-down ────────────────────────────────────────────────────────────────
+
+/**
+ * The current release's outstanding spec work (`lib/burn-down.mjs`), as text or
+ * `--json`. Cells are computed only for features due now, the only ones the
+ * report weighs, so deferred features cost no git calls.
+ */
+async function printBurnDown(args, { aspectsDir, repoRoot, allAspects, allFeatures, releases }) {
+	const unknown = args.find(a => a !== '--json');
+	if (unknown) { console.error(`Unknown option: ${unknown}`); console.error(HELP); process.exit(2); }
+	const due = allFeatures.filter(f => featureRank(f, releases) === 0);
+	const { columns } = await buildMatrix(coverageColumns(allAspects), due, { aspectsDir, repoRoot, releases });
+	const cells = new Map(columns.map(c => [c.aspect, c.cells]));
+	const report = burnDown({ features: allFeatures, aspects: allAspects, releases, cellOf: (feature, aspect) => cells.get(aspect.name).get(feature.code) });
+	console.log(args.includes('--json') ? JSON.stringify(report, null, 2) : formatBurnDown(report));
 }
 
 // ── Manual overrides: pin / accept ───────────────────────────────────────────

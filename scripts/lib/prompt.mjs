@@ -11,6 +11,7 @@
 import { relative } from 'node:path';
 
 import { annotationSchema, resolveAnnotation } from './aspects.mjs';
+import { capabilityScope } from './scope.mjs';
 
 export function buildAuditPrompt({
 	aspect,
@@ -21,14 +22,19 @@ export function buildAuditPrompt({
 	runLogPath,      // absolute
 	runId,
 	runStartedAt,
+	target,          // the run's release target (cli.mjs runTarget)
+	releases,        // readReleaseList's result
 	knownBlockers = [],   // open blockers from earlier batches this run
 }) {
 	const aspectName = aspect.name;
-	const ticketStage = aspect.data['ticket-stage'] || 'plan';
+	const ticketDir = target.kind === 'release' ? `backlog/${target.code}` : (aspect.data['ticket-stage'] || 'plan');
 	const settings = annotationSchema(aspect);
 	const featureList = features
-		.map(f => `- ${f.code} — ${f.name}  (${rel(f.path, repoRoot)})`
-			+ (settings ? `\n  settings: ${JSON.stringify(resolveAnnotation(aspect, f))}` : ''))
+		.map(f => [
+			`- ${f.code} — ${f.name}  (${rel(f.path, repoRoot)})`,
+			...(settings ? [`  settings: ${JSON.stringify(resolveAnnotation(aspect, f))}`] : []),
+			...scopeLines(capabilityScope(f, target, releases)),
+		].join('\n'))
 		.join('\n');
 
 	const settingsSection = settings
@@ -39,9 +45,14 @@ export function buildAuditPrompt({
 		? `\n## Known blockers this run\n\nEarlier batches in this run reported shared conditions that may impede your audit. **Do not re-investigate them.** If a feature you're auditing depends on one of these, mark it \`blocked\` in your verdicts (don't file a gap ticket) and move on:\n\n${knownBlockers.map(b => `- **${b.id}** (${b.scope}, ${b.severity}) — ${b.summary}${b.detect ? ` _(detect: ${b.detect})_` : ''}`).join('\n')}\n`
 		: '';
 
+	const listsLaterRelease = releases.codes.length > 1;
+	const backlogNote = target.kind !== 'release' && listsLaterRelease
+		? '\nA gap that concerns only work tagged `target: <CODE>` belongs in `tickets/backlog/<CODE>/` instead.\n'
+		: '';
+
 	const tplSection = ticketTemplateBody
-		? `\n## Gap-ticket template\n\nFile gap tickets that match the structure of this template, filling in placeholders. Save each ticket as a new file under \`tickets/${ticketStage}/<aspect>-<feature-slug>.md\`. Before creating, search the existing tickets directory for an open ticket with the same (feature, aspect) pair and skip duplicates.\n\n\`\`\`\n${ticketTemplateBody.trim()}\n\`\`\`\n`
-		: `\n## Gap tickets\n\nFor each gap, write a markdown ticket file under \`tickets/${ticketStage}/${aspectName}-<feature-code-lower>.md\`. The ticket should reference the feature code, describe the gap, list expected evidence, and end with a TODO list. Search the tickets directory first to avoid duplicates.\n`;
+		? `\n## Gap-ticket template\n\nFile gap tickets that match the structure of this template, filling in placeholders. Save each ticket as a new file under \`tickets/${ticketDir}/<aspect>-<feature-slug>.md\`. Before creating, search the existing tickets directory for an open ticket with the same (feature, aspect) pair and skip duplicates.\n${backlogNote}\n\`\`\`\n${ticketTemplateBody.trim()}\n\`\`\`\n`
+		: `\n## Gap tickets\n\nFor each gap, write a markdown ticket file under \`tickets/${ticketDir}/${aspectName}-<feature-code-lower>.md\`. The ticket should reference the feature code, describe the gap, list expected evidence, and end with a TODO list. Search the tickets directory first to avoid duplicates.\n${backlogNote}`;
 
 	return `You are running a **rubric audit** for the aspect **${aspectName}** over a batch of features.
 
@@ -119,6 +130,17 @@ If a blocker is already listed under "Known blockers this run", don't re-raise i
 - Stay efficient. If a single feature is taking outsized investigation, mark it \`partial\` with a sketch and let a follow-up ticket carry the deeper dig.
 
 Begin.`;
+}
+
+/**
+ * The lines under a feature for its release scope (agent-rules/audit.md
+ * § Release scope): the capabilities an earlier feature is audited for alone,
+ * or the ones the audit leaves out; none when every capability is audited.
+ */
+function scopeLines({ audit, deferred, only }) {
+	if (only) return ['  audit only:', ...audit.map(cap => `    ${JSON.stringify(cap.text)}`)];
+	if (deferred.length === 0) return [];
+	return ['  deferred — do not audit, do not file gaps:', ...deferred.map(({ cap, code }) => `    ${JSON.stringify(cap.text)} → ${code}`)];
 }
 
 function rel(absPath, repoRoot) {

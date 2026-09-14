@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { test } from 'node:test';
 
 import { parseFrontmatter } from './frontmatter.mjs';
-import { capabilityDueWithFeature, featureFingerprint } from './ledger.mjs';
+import { featureFingerprint } from './ledger.mjs';
 
 // Contract: schema.md § Hashes (feature-hash) — the fingerprint changes exactly when the file changes
 // as it bears on this aspect's audit.
@@ -90,13 +90,4 @@ test('surfaces count only as their overlap with an aspect that declares surfaces
 	assert.equal(fingerprint(file(...BASE, 'surfaces: [api, web]'), { aspect: webSmoke }), fingerprint(onWeb, { aspect: webSmoke }), 'a surface the aspect does not audit');
 	assert.notEqual(fingerprint(file(...BASE, 'surfaces: [web, mobile]'), { aspect: webSmoke }), fingerprint(onWeb, { aspect: webSmoke }), 'gaining one it does');
 	assert.equal(fingerprint(bare, { aspect: webSmoke, inherited: { surfaces: ['web'] } }), fingerprint(onWeb, { aspect: webSmoke }), 'inherited counts as own');
-});
-
-test('capabilityDueWithFeature: due when the capability\'s tag ranks no later than its feature\'s, an unlisted code ranking as current', () => {
-	const due = (featureTarget, capTarget, releases = BETA_GA) => capabilityDueWithFeature({ target: featureTarget }, { target: capTarget }, releases);
-
-	assert.deepEqual(
-		[due(null, null), due(null, 'BETA'), due(null, 'GA'), due('GA', 'GA'), due('GA', null), due('GA', 'RC'), due('RC', 'GA'), due(null, 'GA', OFF)],
-		[true, true, false, true, true, true, false, true],
-	);
 });

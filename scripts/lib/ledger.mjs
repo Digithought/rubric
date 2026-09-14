@@ -22,7 +22,7 @@ import { resolveAnnotation } from './aspects.mjs';
 import { rewriteFrontmatter } from './feature-text.mjs';
 import { ownSurfaces } from './features.mjs';
 import { parseFrontmatter, stringifyFrontmatter } from './frontmatter.mjs';
-import { dueRank } from './releases.mjs';
+import { capabilityDueWithFeature } from './scope.mjs';
 
 export const LEDGER_FILE = 'coverage.md';
 
@@ -99,15 +99,6 @@ export function featureFingerprint({ raw, feature, aspect, releases }) {
 	const shared = audited ? [...new Set(audited.filter(s => feature.surfaces?.includes(s)))].sort() : [];
 	if (shared.length) text += `\nrubric-surfaces: ${JSON.stringify(shared)}`;
 	return sha12(text);
-}
-
-/**
- * Whether a capability is due with its feature: its own tag ranks no later than
- * the feature's effective tag, an unlisted code ranking as current (`dueRank`).
- * A plain capability has no tag of its own, so it always is.
- */
-export function capabilityDueWithFeature(feature, cap, releases) {
-	return dueRank(releases, cap.target) <= dueRank(releases, feature.target);
 }
 
 /**

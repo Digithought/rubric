@@ -7,7 +7,8 @@
  *   2. Plans (`lib/plan.mjs`): filters aspects by cadence, or `--aspect` (a
  *      parent with children runs its children — it has no verdicts of its own);
  *      for each aspect walks `features/`, applies its `level`, `applies-to` and
- *      `surfaces` (a child's parent's too), then splits into batches per `batch:`.
+ *      `surfaces` (a child's parent's too), keeps the features in the release
+ *      `--target` (`lib/scope.mjs`), then splits into batches per `batch:`.
  *   3. Records the plan as a run manifest in `.runs/<runId>/manifest.md`, then
  *      dispatches one audit agent per batch, driving each task through the
  *      manifest state machine (pending → running → done/failed/blocked).
@@ -28,12 +29,13 @@ import { fileURLToPath } from 'node:url';
 import { mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 
-import { parseArgs } from './lib/cli.mjs';
+import { parseArgs, runTarget } from './lib/cli.mjs';
 import { hasVerdicts, readPrompt, readTicketTemplate } from './lib/aspects.mjs';
 import { findFeature } from './lib/features.mjs';
 import { exitIfSpecInvalid, loadSpec, validateSpec } from './lib/validate.mjs';
 import { planAspects, selectAspects } from './lib/plan.mjs';
 import { buildAuditPrompt } from './lib/prompt.mjs';
+import { describeTarget, featureInScope, recordedTarget, targetName } from './lib/scope.mjs';
 import { runAgent } from './lib/agent.mjs';
 import { readRun } from './lib/runs.mjs';
 import { gitHead } from './lib/git.mjs';
@@ -73,6 +75,7 @@ async function main() {
 
 async function freshRun(opts, ctx) {
 	const { aspectsDir, runsDir, repoRoot, allAspects, allFeatures, releases } = ctx;
+	const target = exitOnUsageError(runTarget(opts, releases));
 
 	if (allAspects.length === 0) {
 		console.log(`No aspects activated. Create a folder under aspects/<name>/ with an aspect.md to activate one.`);
@@ -104,24 +107,27 @@ async function freshRun(opts, ctx) {
 		if (pruned) console.log(`  ${aspect.name}: pruned ${pruned} fresh, ${stale.length} stale/missing to audit`);
 		return stale;
 	};
-	const plan = await planAspects({ aspects: allAspects, features: allFeatures, opts, narrowToStale });
+	const plan = await planAspects({ aspects: allAspects, features: allFeatures, opts, target, releases, narrowToStale });
+	const recorded = recordedTarget(target, releases);
 
 	// ── Print plan ──
 	const totalBatches = plan.reduce((n, p) => n + p.batches.length, 0);
 	const totalFeatures = plan.reduce((n, p) => n + p.batches.flat().length, 0);
 	console.log(`rubric run`);
 	console.log(`  cadence:      ${opts.aspect ? `(--aspect ${opts.aspect})` : opts.cadence}`);
+	console.log(`  target:       ${describeTarget(recorded)}`);
 	console.log(`  aspects:      ${plan.length}`);
 	console.log(`  batches:      ${totalBatches}`);
 	console.log(`  features:     ${totalFeatures}`);
 	console.log(`  agent:        ${opts.agent}`);
 	console.log(`  dry-run:      ${opts.dryRun}`);
 	console.log('');
-	for (const { aspect, batches, skipped } of plan) {
+	for (const { aspect, batches, skipped, excluded } of plan) {
 		const badge = aspect.promptSource === 'project' ? 'project' : (aspect.promptSource === 'default' ? 'default' : 'NO PROMPT');
 		const parent = aspect.parent ? `, parent: ${aspect.parent.name}` : '';
 		const level = aspect.data.level || aspect.parent?.data.level || 'any';
 		console.log(`  ${aspect.name}  (prompt: ${badge}${parent}, level: ${level}, batch: ${aspect.data.batch || 8})`);
+		if (excluded) console.log(`    excluded by target: ${excluded.join(', ')}`);
 		if (skipped) { console.log(`    skipped — ${skipped}`); continue; }
 		batches.forEach((b, i) => {
 			console.log(`    batch ${i + 1}/${batches.length}: ${b.map(f => f.code).join(', ')}`);
@@ -149,13 +155,13 @@ async function freshRun(opts, ctx) {
 	if (descriptors.length === 0) { console.log('\nNothing to dispatch.'); return; }
 
 	const manifest = createManifest({
-		runId, trigger, startedAt,
+		runId, trigger, ...recorded, startedAt,
 		tasks: descriptors.map(d => ({ id: d.id, aspect: d.aspect.name, features: d.features.map(f => f.code), log: d.log })),
 	});
 	await writeManifest(runsDir, manifest);
 	console.log(`\nrun: ${runId}  (manifest: ${rel(join(runDir(runsDir, runId), 'manifest.md'), repoRoot)})`);
 
-	await dispatchLoop({ opts, aspectsDir, runsDir, repoRoot, releases, manifest, descriptors, staleSet: new Set() });
+	await dispatchLoop({ opts, aspectsDir, runsDir, repoRoot, releases, target, manifest, descriptors, staleSet: new Set() });
 }
 
 // ── Resume: replay a prior run from its manifest ─────────────────────────────
@@ -166,6 +172,8 @@ async function resume(opts, ctx) {
 	if (!runId) { console.error(`No resumable run found for "${opts.resume}".`); process.exit(1); }
 	const manifest = await readManifest(runsDir, runId);
 	if (!manifest) { console.error(`Run "${runId}" has no manifest.`); process.exit(1); }
+	const target = exitOnUsageError(runTarget(opts, releases, manifest));
+	manifest.target ??= 'all';
 
 	// Blockers carried over from the prior pass are "stale" — unverified. They
 	// stay as warnings (injected) but don't halt dispatch until re-confirmed.
@@ -188,7 +196,16 @@ async function resume(opts, ctx) {
 			continue;
 		}
 		const features = task.features.map(c => findFeature(allFeatures, c)).filter(Boolean);
-		descriptors.push({ id: task.id, aspect, features, log: task.log });
+		const inTarget = features.filter(f => featureInScope(f, target, releases));
+		if (inTarget.length < features.length && task.status !== 'done' && task.status !== 'skipped') {
+			const dropped = features.filter(f => !inTarget.includes(f)).map(f => f.code);
+			console.warn(`  ${task.id}: ${dropped.join(', ')} no longer in target ${targetName(target)} — not audited.`);
+			if (inTarget.length === 0) {
+				setTaskStatus(manifest, task.id, 'skipped', { note: `no features left in target ${targetName(target)}` });
+				continue;
+			}
+		}
+		descriptors.push({ id: task.id, aspect, features: inTarget, log: task.log });
 	}
 
 	manifest.status = 'in-progress';
@@ -197,6 +214,7 @@ async function resume(opts, ctx) {
 
 	const pendingCount = descriptors.filter(d => shouldDispatch(manifest, d, staleSet)).length;
 	console.log(`Resuming run ${runId} — ${pendingCount} task(s) to (re)dispatch, ${manifest.tasks.length} total.`);
+	console.log(`  target: ${describeTarget(recordedTarget(target, releases))}`);
 	if (opts.dryRun) {
 		for (const d of descriptors) {
 			const t = manifest.tasks.find(x => x.id === d.id);
@@ -204,7 +222,7 @@ async function resume(opts, ctx) {
 		}
 		return;
 	}
-	await dispatchLoop({ opts, aspectsDir, runsDir, repoRoot, releases, manifest, descriptors, staleSet });
+	await dispatchLoop({ opts, aspectsDir, runsDir, repoRoot, releases, target, manifest, descriptors, staleSet });
 }
 
 // ── Shared dispatch loop + state machine ─────────────────────────────────────
@@ -223,11 +241,13 @@ function shouldDispatch(manifest, descriptor, staleSet) {
 	return true;
 }
 
-async function dispatchLoop({ opts, aspectsDir, runsDir, repoRoot, releases, manifest, descriptors, staleSet }) {
+async function dispatchLoop({ opts, aspectsDir, runsDir, repoRoot, releases, target, manifest, descriptors, staleSet }) {
 	const dir = runDir(runsDir, manifest.run);
 	const promptCache = new Map();   // aspect.name → { prompt, tpl }
 	const ledgerCache = new Map();   // aspect.name → { ledger, aspectHash, snapshot }
 	let failuresWithoutBlocker = 0;
+	const recordsCoverage = target.kind !== 'release';
+	if (!recordsCoverage) console.log('ledger not updated — audits for a later release do not record current coverage');
 
 	for (const d of descriptors) {
 		if (!shouldDispatch(manifest, d, staleSet)) continue;
@@ -291,6 +311,8 @@ async function dispatchLoop({ opts, aspectsDir, runsDir, repoRoot, releases, man
 			runLogPath,
 			runId: manifest.run,
 			runStartedAt: startedAt,
+			target,
+			releases,
 			knownBlockers,
 		});
 
@@ -340,7 +362,7 @@ async function dispatchLoop({ opts, aspectsDir, runsDir, repoRoot, releases, man
 
 		// Lift verdicts + evidence into the aspect's durable coverage ledger. A
 		// blocked verdict leaves any prior record untouched (the audit didn't run).
-		if (reported.verdicts?.length) {
+		if (recordsCoverage && reported.verdicts?.length) {
 			try {
 				await updateLedger({
 					aspectsDir, repoRoot, releases,
@@ -471,6 +493,13 @@ async function staleFeatures(features, aspect, { aspectsDir, repoRoot, releases 
 	}
 	scored.sort((a, b) => b.priority - a.priority);
 	return scored.map(s => s.feature);
+}
+
+/** A usage error from resolving the run's target: printed, then exit 2, as `parseArgs` does for its own. */
+function exitOnUsageError(result) {
+	if (!result.error) return result;
+	console.error(result.error);
+	process.exit(2);
 }
 
 function rel(absPath, repoRoot) {

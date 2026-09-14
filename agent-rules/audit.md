@@ -21,13 +21,22 @@ Then, for each feature in the batch:
    - **gap** — aspect applies but evidence is missing or insufficient.
    - **partial** — some evidence exists but is incomplete; treat as a gap with a more specific scope.
    - **blocked** — couldn't audit because a shared blocker got in the way (record the blocker, see below).
-4. **For gaps, file a ticket.** Use the aspect's `ticket-template.md` (or default). The ticket goes into `aspects/<name>/aspect.md`'s `ticket-system` and `ticket-stage`. Before filing, search for an open ticket already covering this (feature, aspect) pair to avoid duplicates. 
+4. **For gaps, file a ticket.** Use the aspect's `ticket-template.md` (or default). The ticket goes into `aspects/<name>/aspect.md`'s `ticket-system` and `ticket-stage`, unless the run audits a later release (see "Release scope"). Before filing, search for an open ticket already covering this (feature, aspect) pair to avoid duplicates. 
 5. **Record the verdict** in the run log.
 6. **Record the evidence paths.** In the run log's `## Evidence` section, note the paths you actually inspected to reach the verdict — the source files, tests, help pages, etc. These drive drift-based staleness: the runner stores them in the coverage ledger, and a future run re-audits this pair only when git shows a commit touched one of them. Report what you genuinely consulted — over-broad globs force needless re-audits, too-narrow ones let real drift slip through. Use `(none)` when there was nothing to inspect (e.g. an `n/a` verdict).
 
 ## Feature settings
 
 When the aspect declares `annotation:`, the runner lists each feature's resolved settings with it: the annotation's defaults, overridden by the feature's own `aspects.<name>` block. They are the one exception to "do not edit content": when the aspect's prompt asks you to record a value, write it only under `aspects.<name>` in that feature's front-matter, only keys the annotation declares, and change nothing else in the file. The runner checks each batch's feature files afterwards ([`runner.md`](runner.md#post-batch-guard)).
+
+## Release scope
+
+A run audits one release's work ([`runner.md`](runner.md#release-scoping)); anything not tagged with a later release is due in the current one. Under a feature in your batch, the runner may add:
+
+- `deferred — do not audit, do not file gaps:` followed by `"<text>" → <CODE>` lines — capabilities due in a later release. Leave them out of the verdict. The feature's other capabilities and its description are still audited.
+- `audit only:` followed by `"<text>"` lines, in a run for a later release — the feature itself is due earlier, so audit only these capabilities.
+
+A run for a later release files gap tickets in that release's deferral folder, `tickets/backlog/<CODE>/`, instead of the aspect's `ticket-stage`. In any other run, a gap that concerns only work tagged `target: <CODE>` belongs in `tickets/backlog/<CODE>/`. A project with no release list gets none of these lines.
 
 ## Reporting blockers
 

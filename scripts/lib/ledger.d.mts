@@ -46,12 +46,6 @@ export function featureFingerprint(input: {
 	releases: Pick<ReleaseList, 'codes'>;
 }): string;
 
-export function capabilityDueWithFeature(
-	feature: Pick<FeatureRecord, 'target'>,
-	cap: { target: string | null },
-	releases: Pick<ReleaseList, 'codes'>,
-): boolean;
-
 export function hashAspectConfig(input: {
 	aspectMdRaw?: string;
 	promptBody?: string;

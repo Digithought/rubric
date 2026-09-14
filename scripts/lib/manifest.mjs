@@ -25,18 +25,24 @@ import { join } from 'node:path';
 import { readFile, writeFile, mkdir, readdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { parseFrontmatter, stringifyFrontmatter } from './frontmatter.mjs';
+import { describeTarget } from './scope.mjs';
 
 export const MANIFEST_FILE = 'manifest.md';
 
 /**
  * Build a fresh manifest from a dispatch plan.
- * @param {{runId:string, trigger:string, startedAt:string, tasks:Array}} init
+ * @param {{runId:string, trigger:string, target:string, release:string|null, releaseList:'present'|'absent',
+ *   startedAt:string, tasks:Array}} init
+ *   target, release, releaseList: scope.mjs `recordedTarget`.
  *   tasks: [{ id, aspect, features:[codes], log }]
  */
-export function createManifest({ runId, trigger, startedAt, tasks }) {
+export function createManifest({ runId, trigger, target, release, releaseList, startedAt, tasks }) {
 	return {
 		run: runId,
 		trigger,
+		target,
+		release,
+		'release-list': releaseList,
 		started: startedAt,
 		finished: null,
 		status: 'in-progress',
@@ -187,7 +193,8 @@ function renderBody(m) {
 	const counts = tally(m.tasks);
 	const open = openBlockers(m);
 	const lines = [];
-	lines.push('', `# Run ${m.run} — ${m.trigger}`, '');
+	const target = m.target == null ? '' : ` · target ${describeTarget({ target: m.target, release: m.release, releaseList: m['release-list'] })}`;
+	lines.push('', `# Run ${m.run} — ${m.trigger}${target}`, '');
 	lines.push(`**Status:** ${m.status} · ${counts.done}/${m.tasks.length} done`
 		+ (counts.blocked ? ` · ${counts.blocked} blocked` : '')
 		+ (counts.failed ? ` · ${counts.failed} failed` : '')
