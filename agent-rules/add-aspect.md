@@ -7,7 +7,7 @@ Use this when activating a new aspect for the project.
 1. **Pick a name.** Lowercase, hyphen-separated, mnemonic. Examples: `code`, `unit-tests`, `help`, `agent-ux`, `agent-toolkit`, `marketing`, `accessibility`, `telemetry`.
 2. **Check for a default.** If `rubric/defaults/aspects/<name>/` exists, the project will inherit its prompt and ticket template. If not, the project must supply both.
 3. **Create the project-side aspect folder.**
-   - `aspects/<name>/aspect.md` — required. Front-matter per [`schema.md`](../schema.md): `name`, `status: active`, `level`, `batch`, `cadence`, `ticket-system`, `ticket-stage`, optional `extends`, `applies-to`, `prompt`, `ticket-template`.
+   - `aspects/<name>/aspect.md` — required. Front-matter per [`schema.md`](../schema.md): `name`, `status: active`, `level`, `batch`, `cadence`, `ticket-system`, `ticket-stage`, optional `extends`, `applies-to`, `surfaces`, `parent`, `annotation`, `prompt`, `ticket-template`. `node rubric/scripts/check-spec.mjs` checks them.
    - `aspects/<name>/prompt.md` — optional override. Omit to use the default.
    - `aspects/<name>/ticket-template.md` — optional override. Omit to use the default.
 4. **Write the prompt** if no default exists. The prompt is the agent's instructions for auditing one feature for this aspect. It should:

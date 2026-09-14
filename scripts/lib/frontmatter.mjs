@@ -37,62 +37,138 @@ export function parseFrontmatter(raw) {
 	return { data, body: m[2] ?? '' };
 }
 
+/**
+ * Read a markdown file's front-matter with source positions: `data` as
+ * `parseFrontmatter` gives it, `keyLines` mapping each top-level key to its
+ * 1-based line, and `itemLines` mapping each block-list key to its items'
+ * 1-based lines (in `data` order).
+ */
+export async function readFrontmatterWithLines(path) {
+	const raw = await readFile(path, 'utf-8');
+	const keyLines = {};
+	const itemLines = {};
+	for (const span of scanFrontmatter(raw)?.keys ?? []) {
+		keyLines[span.key] = span.line + 1;
+		itemLines[span.key] = span.items?.map(item => item.line + 1);
+	}
+	return { data: parseFrontmatter(raw).data, keyLines, itemLines };
+}
+
+/** A parsed YAML mapping: a plain object, not a list or null. */
+export function isMapping(value) {
+	return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+/**
+ * Locate a markdown string's front-matter, line by line, without parsing values.
+ *
+ * Returns null when `parseFrontmatter` would find no front-matter. Otherwise:
+ *   - `lines`: the whole file split on line endings; `eol`: the ending the
+ *     opening fence uses, so a rewrite can keep it;
+ *   - `start` / `end`: 0-based first and last content line between the fences;
+ *   - `keys`: one span per top-level key, in file order. `end` is the last line
+ *     the key owns (indented, blank and comment lines; trailing blank lines
+ *     excluded). `items` is set for a block list: one span per dash at the
+ *     list's own indent, ending on the item's last value line.
+ *
+ * Spans come from the same segmentation `parseYaml` uses, so a key or item here
+ * is exactly what the parser read as one.
+ */
+export function scanFrontmatter(raw) {
+	const m = raw.match(FRONT_MATTER_RE);
+	if (!m) return null;
+	const lines = raw.split(/\r?\n/);
+	const start = 1;
+	const end = start + m[1].split(/\r?\n/).length - 1;
+	const keys = scanEntries(lines, start, end).map(entry => {
+		const children = entry.kind === 'nested' ? entry.body.map(j => lines[j]) : [];
+		const items = children.length && isBlockList(children)
+			? splitListItems(children).map(group => ({ line: entry.body[group[0]], end: entry.body[group.at(-1)] }))
+			: null;
+		let last = entry.last;
+		while (last > entry.line && isBlank(lines[last])) last--;
+		return { key: entry.key, line: entry.line, end: last, items };
+	});
+	return { eol: raw.startsWith('---\r\n') ? '\r\n' : '\n', lines, start, end, keys };
+}
+
 /** Parse the YAML subset rubric uses. Returns a plain object. */
 export function parseYaml(text) {
 	const lines = text.split(/\r?\n/);
 	const result = {};
-	let i = 0;
-	while (i < lines.length) {
-		const line = lines[i];
-		if (!line.trim() || line.trim().startsWith('#')) { i++; continue; }
-		const indent = line.match(/^\s*/)[0].length;
-		if (indent !== 0) { i++; continue; } // shouldn't see deeper at root level
-		const m = line.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
-		if (!m) { i++; continue; }
-		const key = m[1];
-		const rest = m[2];
-		const blockScalar = rest.match(/^([|>])([-+]?)$/);
-		if (blockScalar) {
-			// Block scalar. `|` keeps line breaks verbatim; `>` folds them (single
-			// breaks become spaces, blank lines become paragraph breaks). Agents
-			// write both styles, and taking a bare `>-` header as the literal value
-			// silently destroyed the field.
-			const style = blockScalar[1];
-			const collected = [];
-			i++;
-			let blockIndent = null;
-			while (i < lines.length) {
-				const l = lines[i];
-				if (l.trim() === '') { collected.push(''); i++; continue; }
-				const ind = l.match(/^\s*/)[0].length;
-				if (blockIndent == null) blockIndent = ind;
-				if (ind < blockIndent || ind === 0) break;
-				collected.push(l.slice(blockIndent));
-				i++;
-			}
-			result[key] = (style === '>' ? foldBlock(collected) : collected.join('\n'))
-				.replace(/\s+$/, '');
-			continue;
-		}
-		if (rest === '') {
-			// Either a block-list or a block-mapping follows (indented lines).
-			i++;
-			const childLines = [];
-			while (i < lines.length) {
-				const l = lines[i];
-				if (l.trim() === '' || l.trim().startsWith('#')) { i++; continue; }
-				const ind = l.match(/^\s*/)[0].length;
-				if (ind === 0) break;
-				childLines.push(l);
-				i++;
-			}
-			result[key] = parseChild(childLines);
-			continue;
-		}
-		result[key] = parseScalar(rest);
-		i++;
+	for (const entry of scanEntries(lines, 0, lines.length - 1)) {
+		result[entry.key] = entryValue(lines, entry);
 	}
 	return result;
+}
+
+const KEY_RE = /^([A-Za-z0-9_-]+):\s*(.*)$/;
+const BLOCK_SCALAR_RE = /^[|>][-+]?$/;
+
+const indentOf = (line) => line.match(/^\s*/)[0].length;
+const isBlank = (line) => line.trim() === '';
+const isComment = (line) => line.trim().startsWith('#');
+
+/**
+ * Split `lines[from..to]` into top-level entries — the one home of the rules
+ * deciding which lines belong to which key:
+ *   - between entries, blank, comment, indented and non-`key:` lines are skipped;
+ *   - `key: |` or `key: >` owns following blank lines and lines indented at
+ *     least as deep as its first non-blank line; a column-0 line always ends it;
+ *   - `key:` with nothing after owns every following blank, comment or
+ *     indented line, up to the next column-0 line that is not a comment;
+ *   - anything else is a one-line scalar.
+ *
+ * `last` is the last owned line. `body` lists the lines holding the value:
+ * every owned line of a block scalar, or the indented non-comment lines of a
+ * nested list or mapping.
+ */
+function scanEntries(lines, from, to) {
+	const entries = [];
+	let i = from;
+	while (i <= to) {
+		const line = lines[i];
+		const m = !isBlank(line) && !isComment(line) && indentOf(line) === 0 && line.match(KEY_RE);
+		if (!m) { i++; continue; }
+		const entry = { key: m[1], rest: m[2], kind: 'scalar', line: i, last: i, body: [], blockIndent: null };
+		i++;
+		if (BLOCK_SCALAR_RE.test(entry.rest)) {
+			entry.kind = 'block';
+			for (; i <= to; i++) {
+				const l = lines[i];
+				if (!isBlank(l)) {
+					const ind = indentOf(l);
+					entry.blockIndent ??= ind;
+					if (ind < entry.blockIndent || ind === 0) break;
+				}
+				entry.body.push(i);
+				entry.last = i;
+			}
+		} else if (entry.rest === '') {
+			entry.kind = 'nested';
+			for (; i <= to; i++) {
+				const l = lines[i];
+				if (!isBlank(l) && !isComment(l)) {
+					if (indentOf(l) === 0) break;
+					entry.body.push(i);
+				}
+				entry.last = i;
+			}
+		}
+		entries.push(entry);
+	}
+	return entries;
+}
+
+function entryValue(lines, entry) {
+	if (entry.kind === 'scalar') return parseScalar(entry.rest);
+	if (entry.kind === 'nested') return parseChild(entry.body.map(j => lines[j]));
+	// Block scalar. `|` keeps line breaks verbatim; `>` folds them (single
+	// breaks become spaces, blank lines become paragraph breaks). Agents write
+	// both styles, and taking a bare `>-` header as the literal value silently
+	// destroyed the field.
+	const collected = entry.body.map(j => (isBlank(lines[j]) ? '' : lines[j].slice(entry.blockIndent)));
+	return (entry.rest[0] === '>' ? foldBlock(collected) : collected.join('\n')).replace(/\s+$/, '');
 }
 
 /**
@@ -114,40 +190,43 @@ function foldBlock(lines) {
 
 function parseChild(lines) {
 	if (lines.length === 0) return null;
-	// Detect block-list vs block-mapping by the first non-empty line.
-	const first = lines[0];
-	const trimmed = first.trim();
-	if (trimmed.startsWith('- ') || trimmed === '-') {
-		return parseBlockList(lines);
-	}
+	if (isBlockList(lines)) return parseBlockList(lines);
 	// Block mapping: re-indent and recurse.
-	const minIndent = Math.min(...lines.map(l => l.match(/^\s*/)[0].length));
+	const minIndent = Math.min(...lines.map(indentOf));
 	const dedented = lines.map(l => l.slice(minIndent)).join('\n');
 	return parseYaml(dedented);
 }
 
+/** Indented child lines are a block list, not a block mapping, when the first one is a dash item. */
+function isBlockList(childLines) {
+	const trimmed = childLines[0].trim();
+	return trimmed.startsWith('- ') || trimmed === '-';
+}
+
+/**
+ * Group block-list lines into items, as arrays of indexes into `lines`: every
+ * dash at the first line's indent starts an item, and the lines after it
+ * continue that item.
+ */
+function splitListItems(lines) {
+	const dashIndent = indentOf(lines[0]);
+	const groups = [];
+	lines.forEach((l, k) => {
+		if (indentOf(l) === dashIndent && /^-(\s|$)/.test(l.trim())) groups.push([k]);
+		else if (groups.length) groups.at(-1).push(k);
+	});
+	return groups;
+}
+
 /**
  * Parse a block list whose items may be scalars (`- SCN-HIER`) or mappings
- * (`- id: x` followed by deeper-indented `key: value` lines). Items are split
- * on the dash markers at the list's own indent.
+ * (`- id: x` followed by deeper-indented `key: value` lines).
  */
 function parseBlockList(lines) {
-	const dashIndent = lines[0].match(/^\s*/)[0].length;
-	const items = [];
-	let cur = null;
-	for (const l of lines) {
-		const ind = l.match(/^\s*/)[0].length;
-		const isDash = ind === dashIndent && /^-(\s|$)/.test(l.trim());
-		if (isDash) {
-			if (cur) items.push(cur);
-			// Replace the "- " marker with spaces so the first key aligns with
-			// the item's continuation lines, turning it into a uniform mapping.
-			cur = [l.replace(/^(\s*)-(\s)/, '$1 $2').replace(/^(\s*)-$/, '$1 ')];
-		} else if (cur) {
-			cur.push(l);
-		}
-	}
-	if (cur) items.push(cur);
+	const items = splitListItems(lines).map(group => group.map(k => lines[k]));
+	// Replace the "- " marker with spaces so the first key aligns with the
+	// item's continuation lines, turning it into a uniform mapping.
+	for (const item of items) item[0] = item[0].replace(/^(\s*)-(\s)/, '$1 $2').replace(/^(\s*)-$/, '$1 ');
 	return items.map(itemLines => {
 		const nonEmpty = itemLines.filter(s => s.trim());
 		if (nonEmpty.length === 0) return null;

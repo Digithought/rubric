@@ -25,6 +25,8 @@ Rule of thumb: if removing the underlying tech wouldn't change what the user doe
 3. **Write the front-matter** per [`schema.md`](../schema.md): `status`, `summary`, `description`, `capabilities`, `related`. Codes in `related:` are full hyphenated forms. **`status` goes only on files with no descendants** — a root or branch that has children omits it, because its status is derived from its descendant leaves (the table is in `schema.md`). A childless root keeps its `status`: it is a leaf in substance, and nothing exists below it to derive from. Adding one back to a node that has children reintroduces a second home for a fact the leaves already hold.
 
    Note the consequence when a childless root **gains** its first branch: it stops being the home for `status`, so remove the field from it in the same change that adds the child.
+
+   The optional fields — `surfaces`, `target` (on the feature or one capability) and `aspects:` settings blocks — follow [`schema.md`](../schema.md#feature-front-matter); `node rubric/scripts/check-spec.mjs` checks them.
 4. **Add a body** with the heading `# <CODE> — <Name>`. Body text is optional for thin leaves; rich features get prose, sub-headings, and an enumeration of branches when known.
 5. **Update the parent index.**
    - For a new root: append a row to the root index in `features/README.md` under the appropriate group.

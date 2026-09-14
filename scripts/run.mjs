@@ -27,8 +27,9 @@ import { mkdir, readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 
 import { parseArgs } from './lib/cli.mjs';
-import { discoverActiveAspects, filterByCadence, readPrompt, readTicketTemplate } from './lib/aspects.mjs';
-import { walkFeatures, filterFeatures, findFeature } from './lib/features.mjs';
+import { filterByCadence, readPrompt, readTicketTemplate } from './lib/aspects.mjs';
+import { filterFeatures, findFeature } from './lib/features.mjs';
+import { exitIfSpecInvalid, loadSpec } from './lib/validate.mjs';
 import { batchFeatures } from './lib/batch.mjs';
 import { buildAuditPrompt } from './lib/prompt.mjs';
 import { runAgent } from './lib/agent.mjs';
@@ -50,19 +51,18 @@ async function main() {
 	const repoRoot = resolve(RUBRIC_ROOT, '..');
 
 	const aspectsDir = join(repoRoot, 'aspects');
-	const featuresDir = join(repoRoot, 'features');
-	const defaultsDir = join(RUBRIC_ROOT, 'defaults', 'aspects');
 	const runsDir = join(repoRoot, '.runs');
-	await mkdir(runsDir, { recursive: true });
 
-	const allAspects = await discoverActiveAspects(aspectsDir, defaultsDir);
-	const allFeatures = await walkFeatures(featuresDir);
+	const spec = await loadSpec(repoRoot);
+	exitIfSpecInvalid(repoRoot, spec);
+	const { aspects: allAspects, features: allFeatures } = spec;
+	await mkdir(runsDir, { recursive: true });
 
 	if (opts.resume) {
 		await resume(opts, { aspectsDir, runsDir, repoRoot, allAspects, allFeatures });
 		return;
 	}
-	await freshRun(opts, { aspectsDir, runsDir, repoRoot, allAspects, allFeatures, defaultsDir });
+	await freshRun(opts, { aspectsDir, runsDir, repoRoot, allAspects, allFeatures });
 }
 
 // ── Fresh run: discover, plan, manifest, dispatch ────────────────────────────
@@ -115,7 +115,7 @@ async function freshRun(opts, ctx) {
 			if (pruned) console.log(`  ${aspect.name}: pruned ${pruned} fresh, ${features.length} stale/missing to audit`);
 		}
 		if (features.length === 0) {
-			const why = opts.staleOnly ? 'nothing stale (all fresh) or no features match' : 'no features match level/applies-to/--features';
+			const why = opts.staleOnly ? 'nothing stale (all fresh) or no features match' : 'no features match level/applies-to/surfaces/--features';
 			plan.push({ aspect, batches: [], skipped: why });
 			continue;
 		}

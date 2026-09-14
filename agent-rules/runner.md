@@ -12,7 +12,7 @@ The runner orchestrates audits across aspects without overflowing any single age
 1. **Resolve aspect set.** From `aspects/`, list each subdirectory containing an `aspect.md`. Filter to those whose `cadence:` includes the current trigger. If the trigger is on-demand with a specific aspect, narrow to that.
 2. **Per aspect, resolve feature set.**
    - Walk `features/` and select features matching `level:` (root / branch / leaf / any).
-   - Apply `applies-to.include` / `applies-to.exclude` if present.
+   - Apply `applies-to.include` / `applies-to.exclude` and the aspect's `surfaces:` if present (see [`schema.md`](../schema.md)).
    - For `on-change`, optionally narrow to features whose source artifacts changed since the last run (see "on-change scoping" below).
 3. **Per aspect, batch the features.** Split into groups of size `batch:`. The order does not matter unless the aspect's prompt says otherwise.
 4. **Open a run.** Allocate a `runId` and create `.runs/<runId>/manifest.md` (schema in [`schema.md`](../schema.md)) listing every batch as a task with status `pending`. This manifest is the run's checklist and blocker blackboard; **the runner is its sole writer.**

@@ -20,8 +20,9 @@ import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readFile } from 'node:fs/promises';
 
-import { discoverActiveAspects, readPrompt, readTicketTemplate } from './lib/aspects.mjs';
-import { walkFeatures, filterFeatures, findFeature } from './lib/features.mjs';
+import { readPrompt, readTicketTemplate } from './lib/aspects.mjs';
+import { filterFeatures, findFeature } from './lib/features.mjs';
+import { exitIfSpecInvalid, loadSpec } from './lib/validate.mjs';
 import { commitsTouching } from './lib/git.mjs';
 import { readLedger, writeLedger, hashFeatureFile, hashAspectConfig } from './lib/ledger.mjs';
 import { computeFreshness, resolveStaleness, isStale } from './lib/freshness.mjs';
@@ -57,18 +58,18 @@ async function main() {
 
 	const repoRoot = resolve(RUBRIC_ROOT, '..');
 	const aspectsDir = join(repoRoot, 'aspects');
-	const featuresDir = join(repoRoot, 'features');
-	const defaultsDir = join(RUBRIC_ROOT, 'defaults', 'aspects');
 
 	const sub = argv[0] && !argv[0].startsWith('-') ? argv[0] : null;
-	const allAspects = await discoverActiveAspects(aspectsDir, defaultsDir);
-	const allFeatures = await walkFeatures(featuresDir);
+	if (sub && sub !== 'pin' && sub !== 'accept') { console.error(`Unknown subcommand: ${sub}`); console.error(HELP); process.exit(2); }
 
-	if (sub === 'pin' || sub === 'accept') {
+	const spec = await loadSpec(repoRoot);
+	exitIfSpecInvalid(repoRoot, spec);
+	const { aspects: allAspects, features: allFeatures } = spec;
+
+	if (sub) {
 		await override(sub, argv.slice(1), { aspectsDir, repoRoot, allAspects, allFeatures });
 		return;
 	}
-	if (sub) { console.error(`Unknown subcommand: ${sub}`); console.error(HELP); process.exit(2); }
 
 	// ── Matrix ──
 	const opts = { aspect: null, stale: false, json: false };

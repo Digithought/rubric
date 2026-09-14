@@ -15,7 +15,7 @@
 	const status = $derived(detail ? asString(detail.meta.status) : undefined);
 	const summary = $derived(detail ? asString(detail.meta.summary) : undefined);
 	const description = $derived(detail ? asString(detail.meta.description) : undefined);
-	const capabilities = $derived(detail ? asArray(detail.meta.capabilities) : []);
+	const capabilities = $derived(detail?.meta.capabilities ?? []);
 	const related = $derived(detail ? asArray(detail.meta.related) : []);
 
 	const bodyHtml = $derived(detail ? marked.parse(detail.body) as string : '');
@@ -61,7 +61,11 @@
 				<h3 class="section-label">Capabilities</h3>
 				<ul class="cap-list">
 					{#each capabilities as cap}
-						<li>{cap}</li>
+						{#if typeof cap === 'string'}
+							<li>{cap}</li>
+						{:else}
+							<li>{cap.text} <span class="target" title="Deferred to release {cap.target}">{cap.target}</span></li>
+						{/if}
 					{/each}
 				</ul>
 			</div>
@@ -166,6 +170,17 @@
 		border-bottom: 1px dashed var(--border);
 	}
 	.cap-list li:last-child { border-bottom: none; }
+	.target {
+		font-family: var(--font-mono);
+		font-size: 0.7rem;
+		font-weight: 600;
+		margin-left: 0.375rem;
+		padding: 0.05rem 0.4rem;
+		border-radius: 99px;
+		background: var(--warning-subtle);
+		color: var(--warning);
+		vertical-align: middle;
+	}
 
 	.chips {
 		display: flex;

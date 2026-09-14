@@ -9,11 +9,14 @@ export interface FeatureNode {
 	children: FeatureNode[];
 }
 
+/** A plain capability, or one deferred to a later release (`target`). */
+export type CapabilityItem = string | { text: string; target: string };
+
 export interface FeatureFrontmatter {
 	status?: string;
 	summary?: string;
 	description?: string;
-	capabilities?: string[];
+	capabilities?: CapabilityItem[];
 	related?: string[];
 	[key: string]: unknown;
 }

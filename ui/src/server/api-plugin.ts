@@ -198,6 +198,22 @@ export interface FeatureNode {
 	children: FeatureNode[];
 }
 
+export type CapabilityItem = string | { text: string; target: string };
+
+// Capabilities as rubric's own parser reads them. The minimal parser above flattens
+// `- text: X` to the string "text: X", losing the capability's `target:`.
+function capabilityItems(value: unknown): CapabilityItem[] {
+	if (!Array.isArray(value)) return [];
+	return value.flatMap((item): CapabilityItem[] => {
+		if (typeof item === 'string') return [item];
+		if (item && typeof item === 'object' && typeof item.text === 'string') {
+			return [typeof item.target === 'string' ? { text: item.text, target: item.target } : item.text];
+		}
+		// Any other shape is a spec error that check-spec reports; show scalars, skip the rest.
+		return item == null || typeof item === 'object' ? [] : [String(item)];
+	});
+}
+
 function parseFeatureFilename(name: string): { code: string; name: string } | null {
 	// strip trailing .md
 	const stem = name.endsWith('.md') ? name.slice(0, -3) : name;
@@ -653,7 +669,7 @@ export function rubricApi(opts: ApiOptions): Plugin {
 							path: rel,
 							code: codes.join('-'),
 							name: leafName,
-							meta,
+							meta: { ...meta, capabilities: capabilityItems(parseFmYaml(raw).data.capabilities) },
 							body,
 							raw,
 						});

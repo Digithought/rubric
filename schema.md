@@ -14,9 +14,16 @@ summary: |                     # 1–2 sentence headline, user-facing
 description: |                 # 1–3 paragraph functional spec (optional for very small leaves)
   ...
 capabilities:                  # discrete user-facing capabilities; bullets agents reason over
-  - First capability
-  - Second capability
+  - First capability           # plain text: due with the feature
+  - text: Export to KML        # object form, only to defer one capability to a later release
+    target: GA
 related: [CRD, TER-LYR, INT]   # cross-references to other feature codes (full hyphenated form)
+surfaces: [web, api]           # optional; the surfaces the feature exists on — descendants that omit it inherit it
+target: GA                     # optional; a later release the feature is deferred to — descendants inherit it
+aspects:                       # optional; one settings block per aspect that declares an annotation:
+  performance:
+    budget: "opens within 2 s on the reference machine"
+    workload: open-large
 ---
 ```
 
@@ -34,6 +41,35 @@ related: [CRD, TER-LYR, INT]   # cross-references to other feature codes (full h
 A stored copy on a branch is a second home for the same fact, and nothing updates it when a leaf changes. Measured on SiteCAD before this rule: 22 of 51 branches (43%) claimed a status their own leaves contradicted — all 22 overclaimed, none understated, because the leaf edit that would falsify it happens far from the branch file.
 
 Retiring a branch means retiring its leaves; once every descendant is `retired`, the branch derives `retired` too.
+
+### `surfaces` and `target` inherit down the tree
+
+A node's effective value is its own declaration, else its nearest ancestor's. A subtree that exists on one surface, or is deferred as a whole, says so once at its top node rather than on every leaf.
+
+- **`surfaces:`** — a non-empty list of names from the [surface vocabulary](#surface-vocabulary); omit the field rather than writing `[]`. A descendant may declare surfaces outside its ancestor's. An aspect that declares `surfaces:` audits a feature only when their surfaces intersect, so a feature with no effective surfaces is not audited by it.
+- **`target:`** — a later code from `tickets/releases.md`; anything without one is due in the current release ([principles](agent-rules/principles.md#current-release-assumption)). Naming the current code means the same as no tag. Using `target:` requires the release list to exist, and a descendant cannot target a release before its ancestor's.
+
+### Capabilities
+
+Each item is plain text, due with its feature, or the object form `{ text, target }`, which defers that one capability. In the object form `text` is one non-empty line and `target` is required — a capability with no target uses the plain form — and the capability cannot target a release before its feature's effective target. A plain capability that starts with `Word: ` parses as a mapping; quote the line.
+
+### `aspects:` — settings an aspect owns
+
+One block per aspect, keyed by the aspect's folder name, holding the settings its [`annotation:`](#surfaces-parent-and-annotation) declares. The audit uses the annotation's defaults overlaid by the block; an empty block means the defaults. Only an active aspect that declares `annotation:` takes a block, every key must be one it declares, and every value must have the declared type.
+
+A block does not inherit: it belongs to the node the aspect audits, and a copy on an ancestor would be dead data. So a block on a feature the aspect does not apply to is an error, retired features excepted.
+
+### Surface vocabulary
+
+`features/README.md` declares the surface names in its front-matter:
+
+```yaml
+---
+surfaces: [web, mobile, api, viewer]
+---
+```
+
+Names match `^[a-z][a-z0-9-]*$` and are listed once. Any `surfaces:` on a feature or aspect requires this list.
 
 ### Coding scheme
 
@@ -85,6 +121,16 @@ staleness:                     # optional; governs when a prior audit is re-run 
   max-age: null                # optional wall-clock safety net; null = off (default)
   on-spec-change: stale        # feature-hash mismatch → stale | ignore
   on-criteria-change: stale    # aspect-hash mismatch  → stale | ignore
+surfaces: [web]                # optional; audit only features on these surfaces — absent = regardless of surfaces
+parent: ux                     # optional; the folder name of another aspect
+annotation:                    # optional; schema and defaults for features' aspects.<name> block
+  budget:
+    type: string               # string | number | boolean | enum | list
+    default: "..."
+  depth:
+    type: enum
+    values: [overview, reference]
+    default: overview
 ---
 ```
 
@@ -120,6 +166,16 @@ An aspect can list multiple cadences; the runner unions them.
 - `on-criteria-change` (default `stale`) — when the resolved aspect config's hash no longer matches, mark **criteria-stale**. Set `ignore` to keep verdicts across prompt tweaks.
 
 Staleness is **derived at read time** by comparing a record's stored hashes and `audited-commit` against the current files and git history — never persisted. See the ledger schema for the state precedence.
+
+### Surfaces, parent and annotation
+
+- **`surfaces:`** — names from the [surface vocabulary](#surface-vocabulary), as on features. `level`, `applies-to` and `surfaces` compose: all three must admit a feature.
+- **`parent:`** — the folder name of another active aspect that has no `parent:` of its own (one level only). A child that declares `level:` declares its parent's. A parent with children has no verdicts of its own, so it declares no `annotation:`. What the hierarchy means: [principles](agent-rules/principles.md#aspect-annotations-surfaces-and-hierarchy).
+- **`annotation:`** — the settings this aspect owns in features' [`aspects.<name>`](#aspects--settings-an-aspect-owns) blocks. Setting names match `^[a-z][a-z0-9-]*$`. `type` is `string`, `number`, `boolean`, `enum` (with a non-empty `values:` list) or `list` (of scalars); `default`, when given and not null, has that type. A setting with no default is absent from a feature's resolved settings until the feature sets it.
+
+## Checking the spec
+
+`node rubric/scripts/check-spec.mjs [--root <dir>]` checks every field rule above, and the release list through tess's reader, printing `<path>:<line>: <message>` for each problem. `run.mjs` and `coverage.mjs` run the same check at startup and exit without planning or recording anything — a dry run included — while it fails.
 
 ## Run-log schema
 
