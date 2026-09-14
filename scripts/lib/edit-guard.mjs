@@ -15,9 +15,9 @@ import { isMapping, parseFrontmatter } from './frontmatter.mjs';
  * is in it), then the body with line endings normalised. Null for a missing
  * file.
  */
-// NOTE: compares parsed front-matter, so reformatting outside the block (quoting, comments, blank lines) goes unreported though it changes the other aspects' fingerprints; if audits turn out to reformat, compare the text with the block's lines removed instead.
 export function contentOutsideBlock(raw, aspectName) {
 	if (raw == null) return null;
+	// NOTE: compares parsed front-matter, so reformatting outside the block (quoting, comments, blank lines) goes unreported though it changes the other aspects' fingerprints; if audits turn out to reformat, compare the text with the block's lines removed instead.
 	const { data, body } = parseFrontmatter(raw);
 	const rest = { ...data };
 	if (isMapping(rest.aspects)) {

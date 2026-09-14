@@ -313,6 +313,11 @@ async function override(kind, args, { aspectsDir, allAspects, allFeatures, relea
 		console.error(`Usage: coverage.mjs ${kind} <FEATURE_CODE> <aspect>`);
 		process.exit(2);
 	}
+	const aspect = allAspects.find(a => a.name === aspectName);
+	if (aspect && !hasVerdicts(aspect)) {
+		console.error(`Aspect "${aspectName}" has children (${aspect.children.join(', ')}) and no verdicts of its own — its ledger is ignored. ${kind} the record under one of its children instead.`);
+		process.exit(1);
+	}
 	const ledger = await readLedger(aspectsDir, aspectName);
 	const record = ledger.records[code];
 	if (!record) {
@@ -328,7 +333,6 @@ async function override(kind, args, { aspectsDir, allAspects, allFeatures, relea
 	}
 
 	// accept — rehash to current feature + aspect, clearing spec/criteria-staleness.
-	const aspect = allAspects.find(a => a.name === aspectName);
 	if (!aspect) { console.error(`Aspect "${aspectName}" is not active — cannot recompute its hash.`); process.exit(1); }
 	const feat = findFeature(allFeatures, code);
 	if (!feat) { console.error(`Feature "${code}" is not in the inventory — cannot recompute its hash.`); process.exit(1); }

@@ -407,9 +407,9 @@ async function dispatchLoop({ opts, aspectsDir, runsDir, repoRoot, releases, tar
  * when there is none). The ledger still records the verdicts; the edit changes
  * the feature's fingerprint, so it shows as spec-stale on the other aspects.
  */
-// NOTE: batches are dispatched one at a time, so this before/after comparison cannot see another audit's edit; if dispatch is parallelised, a concurrent audit's edit to its own block would be reported against this batch — snapshot per aspect's own block only.
 async function guardBatchEdits({ repoRoot, aspect, features, beforeAudit }) {
 	const notes = [];
+	// NOTE: batches are dispatched one at a time, so any edit this comparison finds is this batch's audit's; if dispatch is ever parallelised, a concurrent audit's write to its own aspects.<other> block would be reported here too — then leave every running aspect's block out of the comparison.
 	const edited = editedOutsideBlock(beforeAudit, features, aspect.name);
 	if (edited.length) {
 		notes.push(`edited outside aspects.${aspect.name}: ${edited.join(', ')}`);
