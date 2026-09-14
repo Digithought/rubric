@@ -24,6 +24,12 @@ export interface FeatureRecord {
 
 export function walkFeatures(featuresDir: string): Promise<FeatureRecord[]>;
 
+export function nearestDeclaring(
+	code: string,
+	byCode: Map<string, FeatureRecord>,
+	own: (record: FeatureRecord) => unknown,
+): FeatureRecord | null;
+
 export function ownSurfaces(record: { data?: Record<string, any> }): string[] | null;
 
 export function ownTarget(feature: { data?: Record<string, any> }): string | null;

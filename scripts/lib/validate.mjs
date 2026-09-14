@@ -9,7 +9,7 @@ import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { annotationSchema, discoverActiveAspects } from './aspects.mjs';
-import { aspectApplies, readSurfaceVocabulary, walkFeatures } from './features.mjs';
+import { aspectApplies, nearestDeclaring, ownTarget, readSurfaceVocabulary, walkFeatures } from './features.mjs';
 import { isMapping } from './frontmatter.mjs';
 import { RELEASES_FILE, readReleaseList, releaseRank } from './releases.mjs';
 
@@ -86,16 +86,16 @@ const isScalar = (value) => ['string', 'number', 'boolean'].includes(typeof valu
 
 /**
  * The vocabulary in `features/README.md`. Returns null when none is declared,
- * else `{ names }` — a Set of the declared names, or null when the value is not
- * a list at all (membership is then not checked, so one error doesn't repeat
- * at every use).
+ * else `{ names }` — a Set of the declared names, or null when the value is
+ * empty or not a list (membership is then not checked, so one error doesn't
+ * repeat at every use).
  */
 function checkVocabulary(vocabulary, report) {
 	if (!vocabulary) return null;
 	const { path, line, value } = vocabulary;
 	if (value == null || (Array.isArray(value) && value.length === 0)) {
 		report(path, line, 'surfaces: is empty — list the surface names, or omit the field');
-		return { names: new Set() };
+		return { names: null };
 	}
 	if (!Array.isArray(value)) {
 		report(path, line, 'surfaces: must be a list of surface names, e.g. surfaces: [web, api]');
@@ -177,12 +177,7 @@ function checkTargets(features, releases, shipped, report) {
 
 /** The nearest ancestor declaring its own `target:` — where the feature's inherited target comes from. */
 function declaringAncestor(feature, byCode) {
-	const segments = feature.code.split('-');
-	for (let n = segments.length - 1; n > 0; n--) {
-		const node = byCode.get(segments.slice(0, n).join('-'));
-		if (node?.data.target != null) return node;
-	}
-	return null;
+	return nearestDeclaring(feature.code.split('-').slice(0, -1).join('-'), byCode, ownTarget);
 }
 
 /** Whether `code` ranks before `bound`. False when either is unlisted: that is reported where it is written. */

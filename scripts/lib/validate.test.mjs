@@ -55,6 +55,9 @@ const CASES = [
 	['vocabulary: is a list',
 		{ [README]: fm('surfaces: web, mobile') },
 		[`${README}:2: surfaces: must be a list of surface names, e.g. surfaces: [web, api]`]],
+	['vocabulary: an empty list is one error, not repeated at every surfaces: that uses it',
+		{ [README]: fm('surfaces: []') },
+		[`${README}:2: surfaces: is empty — list the surface names, or omit the field`]],
 
 	// surfaces: on features and aspects
 	['surfaces: using them needs a vocabulary in features/README.md',

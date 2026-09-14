@@ -83,19 +83,26 @@ function deriveNonLeafStatus(features) {
  */
 function deriveInherited(features) {
 	const byCode = new Map(features.map(f => [f.code, f]));
+	const effective = (f, own) => {
+		const node = nearestDeclaring(f.code, byCode, own);
+		return node ? own(node) : null;
+	};
 	for (const f of features) {
-		f.surfaces = nearestDeclared(f, byCode, ownSurfaces);
-		f.target = nearestDeclared(f, byCode, ownTarget);
+		f.surfaces = effective(f, ownSurfaces);
+		f.target = effective(f, ownTarget);
 	}
 }
 
-/** The first non-null `own(node)` from the feature itself up through its ancestors' files. */
-function nearestDeclared(feature, byCode, own) {
-	const segments = feature.code.split('-');
+/**
+ * The record for `code` or, failing that, its nearest ancestor's, whose
+ * `own(record)` is not null; null when none declares it. `byCode` maps full
+ * codes to records.
+ */
+export function nearestDeclaring(code, byCode, own) {
+	const segments = code.split('-');
 	for (let n = segments.length; n > 0; n--) {
 		const node = byCode.get(segments.slice(0, n).join('-'));
-		const value = node ? own(node) : null;
-		if (value != null) return value;
+		if (node && own(node) != null) return node;
 	}
 	return null;
 }

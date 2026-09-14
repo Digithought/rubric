@@ -226,6 +226,7 @@ function splitListItems(lines) {
  * key, segmented from the same block `parseBlockList` parses.
  */
 function scanListItem(lines, valueLines) {
+	// NOTE: an item ends on its last value line, so a comment between it and the next dash belongs to no item and survives a rewrite that drops the item; if that orphaned comment ever matters, extend the span to the line before the next dash.
 	const block = itemBlock(valueLines.map(j => lines[j]));
 	const keys = isMappingItem(block)
 		? scanEntries(block, 0, block.length - 1).map(e => ({ key: e.key, line: valueLines[e.line], end: valueLines[e.last] }))
