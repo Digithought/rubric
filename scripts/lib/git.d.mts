@@ -4,6 +4,8 @@ export function gitHead(cwd: string): string | null;
 
 export function commitInHistory(cwd: string, sha: string | null | undefined): boolean;
 
+export function lastShippedRelease(cwd: string): string | null;
+
 export function commitsTouching(
 	cwd: string,
 	sinceCommit: string | null | undefined,

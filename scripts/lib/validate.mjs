@@ -33,10 +33,12 @@ export async function loadSpec(repoRoot) {
 /**
  * For entry points that plan audits or record verdicts: print the spec's
  * errors and exit 1 when there are any. An invalid spec is not safe to plan
- * from, so this applies to dry runs too.
+ * from, so this applies to dry runs too. `shipped` — `lastShippedRelease`'s
+ * result — sharpens the message when an unknown target code is the release
+ * that was just shipped.
  */
-export function exitIfSpecInvalid(repoRoot, spec) {
-	const errors = validateSpec({ repoRoot, ...spec });
+export function exitIfSpecInvalid(repoRoot, spec, shipped = null) {
+	const errors = validateSpec({ repoRoot, ...spec, shipped });
 	if (errors.length === 0) return;
 	for (const error of errors) console.error(error);
 	console.error(`\nrubric spec: ${errors.length} error(s) — field rules are in rubric/schema.md`);
@@ -47,9 +49,11 @@ export function exitIfSpecInvalid(repoRoot, spec) {
  * Every problem in the spec, as `<repo-relative path>:<line>: <message>`,
  * sorted by path then line. The line is the capability item's when the
  * problem is inside one, else the top-level key's; release-list errors keep
- * the line tess's reader gives.
+ * the line tess's reader gives. `shipped`, when given, is the code
+ * `lastShippedRelease` found — an unknown target code matching it gets a hint
+ * to run `coverage.mjs ship`.
  */
-export function validateSpec({ repoRoot, features, aspects, vocabulary, releases }) {
+export function validateSpec({ repoRoot, features, aspects, vocabulary, releases, shipped = null }) {
 	const found = [];
 	const report = (path, line = 1, message) => {
 		const rel = relative(repoRoot, path).split(sep).join('/');
@@ -58,7 +62,7 @@ export function validateSpec({ repoRoot, features, aspects, vocabulary, releases
 
 	const vocab = checkVocabulary(vocabulary, report);
 	for (const record of [...features, ...aspects]) checkSurfaces(record, vocab, report);
-	checkTargets(features, releases, report);
+	checkTargets(features, releases, shipped, report);
 	for (const feature of features) checkCapabilities(feature, report);
 	checkAspectBlocks(features, aspects, report);
 	for (const aspect of aspects) checkAnnotation(aspect, report);
@@ -134,12 +138,15 @@ function checkSurfaces(record, vocab, report) {
  * release list exists but tess's reader could not load it: that is one error
  * already, and judging every tag against an unknown list would repeat it.
  */
-function checkTargets(features, releases, report) {
+function checkTargets(features, releases, shipped, report) {
 	if (releases.unreadable) return;
 	const byCode = new Map(features.map(f => [f.code, f]));
 	const isListed = (path, line, code) => {
 		if (!releases.present) report(path, line, `has target: ${show(code)} but ${RELEASES_FILE} does not exist`);
-		else if (releaseRank(releases, code) === -1) report(path, line, `target: ${show(code)} is not a code in ${RELEASES_FILE}`);
+		else if (releaseRank(releases, code) === -1) {
+			const hint = code === shipped ? ` — ${code} was just shipped; run node rubric/scripts/coverage.mjs ship` : '';
+			report(path, line, `target: ${show(code)} is not a code in ${RELEASES_FILE}${hint}`);
+		}
 		else return true;
 		return false;
 	};

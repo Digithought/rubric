@@ -38,7 +38,7 @@ import { buildAuditPrompt } from './lib/prompt.mjs';
 import { describeTarget, featureInScope, recordedTarget, targetName } from './lib/scope.mjs';
 import { runAgent } from './lib/agent.mjs';
 import { readRun } from './lib/runs.mjs';
-import { gitHead } from './lib/git.mjs';
+import { gitHead, lastShippedRelease } from './lib/git.mjs';
 import { readLedger, writeLedger, upsertRecord } from './lib/ledger.mjs';
 import { cellFor, featureFingerprintFor, resolveAspectHash } from './lib/coverage-cell.mjs';
 import { editedOutsideBlock, snapshotBatch } from './lib/edit-guard.mjs';
@@ -60,7 +60,7 @@ async function main() {
 	const runsDir = join(repoRoot, '.runs');
 
 	const spec = await loadSpec(repoRoot);
-	exitIfSpecInvalid(repoRoot, spec);
+	exitIfSpecInvalid(repoRoot, spec, lastShippedRelease(repoRoot));
 	const { aspects: allAspects, features: allFeatures, releases } = spec;
 	await mkdir(runsDir, { recursive: true });
 

@@ -47,7 +47,7 @@ Retiring a branch means retiring its leaves; once every descendant is `retired`,
 A node's effective value is its own declaration, else its nearest ancestor's. A subtree that exists on one surface, or is deferred as a whole, says so once at its top node rather than on every leaf.
 
 - **`surfaces:`** — a non-empty list of names from the [surface vocabulary](#surface-vocabulary); omit the field rather than writing `[]`. A descendant may declare surfaces outside its ancestor's. An aspect that declares `surfaces:` audits a feature only when their surfaces intersect, so a feature with no effective surfaces is not audited by it.
-- **`target:`** — a later code from `tickets/releases.md`; anything without one is due in the current release ([principles](agent-rules/principles.md#current-release-assumption)). Naming the current code means the same as no tag. Using `target:` requires the release list to exist, and a descendant cannot target a release before its ancestor's.
+- **`target:`** — a later code from `tickets/releases.md`; anything without one is due in the current release ([principles](agent-rules/principles.md#current-release-assumption)). Naming the current code means the same as no tag. Using `target:` requires the release list to exist, and a descendant cannot target a release before its ancestor's. Once tess ships that release, its code no longer exists in the list, and `node rubric/scripts/coverage.mjs ship <CODE>` strips every `target:` tag naming it, at the feature and the capability level alike.
 
 ### Capabilities
 

@@ -39,6 +39,27 @@ export function commitInHistory(cwd, sha) {
 	}
 }
 
+/** A commit subject exactly matching tess's `shipCommitMessage(code)`. */
+const SHIP_SUBJECT_RE = /^tess: ship release ([A-Z][A-Z0-9]{1,7})$/;
+
+/**
+ * The `<CODE>` from the subject of the most recent commit reachable from HEAD
+ * that reads exactly `tess: ship release <CODE>` (tess's `shipCommitMessage`) —
+ * null when there is no such commit, or `cwd` isn't a git repository at all.
+ * Trailing text or a differently-cased code does not match, even on the commit
+ * that is otherwise nearest HEAD: this keeps scanning further back for one that
+ * does, rather than reporting a near-miss as the shipped release.
+ */
+export function lastShippedRelease(cwd) {
+	const out = git(cwd, ['log', '--format=%s']);
+	if (out == null) return null;
+	for (const subject of out.split('\n')) {
+		const m = subject.match(SHIP_SUBJECT_RE);
+		if (m) return m[1];
+	}
+	return null;
+}
+
 /**
  * Count commits in `<sinceCommit>..HEAD` that touch any path matching `globs`.
  *

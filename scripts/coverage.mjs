@@ -13,19 +13,22 @@
  *   coverage.mjs burn-down [--json]    the current release's outstanding spec work
  *   coverage.mjs pin <CODE> <aspect>   reaffirm a record (suppress drift/age)
  *   coverage.mjs accept <CODE> <aspect>  rehash to current spec/criteria, keep verdict
+ *   coverage.mjs ship [<CODE>] [--dry-run]  strip a shipped release's target: tags
  *
  * Freshness is derived, never stored — see schema.md and freshness.mjs. A parent
  * aspect with children has no verdicts, so it gets no column; its children
  * stand in its place, labelled `parent/child`.
  */
 
-import { join, dirname, resolve } from 'node:path';
+import { join, dirname, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { aspectLabel, aspectsNamed, coverageColumns, hasVerdicts } from './lib/aspects.mjs';
 import { filterFeatures, findFeature } from './lib/features.mjs';
-import { exitIfSpecInvalid, loadSpec } from './lib/validate.mjs';
+import { lastShippedRelease } from './lib/git.mjs';
+import { exitIfSpecInvalid, loadSpec, validateSpec } from './lib/validate.mjs';
 import { readLedger, writeLedger } from './lib/ledger.mjs';
+import { applyShip, planShip, shipGuard } from './lib/ship.mjs';
 import { cachedFeatureReader, cellFor, featureFingerprintFor, resolveAspectHash } from './lib/coverage-cell.mjs';
 import { resolveStaleness, isStale } from './lib/freshness.mjs';
 import { burnDown, formatBurnDown } from './lib/burn-down.mjs';
@@ -42,6 +45,7 @@ Usage:
   coverage.mjs burn-down [--json]                     the current release's outstanding work
   coverage.mjs pin <FEATURE_CODE> <aspect>            reaffirm a record
   coverage.mjs accept <FEATURE_CODE> <aspect>         rehash to current spec/criteria
+  coverage.mjs ship [<CODE>] [--dry-run]              strip a shipped release's target: tags
 
 Options:
   --aspect <name>   Restrict the matrix to one active aspect; a parent aspect
@@ -54,6 +58,14 @@ burn-down lists, for the current release (the first in tickets/releases.md;
 everything, without one): childless features not implemented, then each aspect's
 missing, stale, gap, partial or blocked cells for features due now. Top-level
 backlog tickets are the rest of the burn-down; tess lists those.
+
+ship removes every feature and capability target: tag naming <CODE> — the
+release tess's own release.mjs ship just made non-current — from the feature
+inventory. <CODE> defaults to the code named in the most recent commit subject
+"tess: ship release <CODE>". Refuses if <CODE> is still in tickets/releases.md
+(ship it with tess first) or that file does not exist. Run after tess's ship,
+before committing: CI's check:rubric-spec hints at this command when it finds
+a target: tag naming an unknown code that was just shipped.
 `;
 
 // Single-char freshness symbols for the matrix.
@@ -71,10 +83,17 @@ async function main() {
 	const aspectsDir = join(repoRoot, 'aspects');
 
 	const sub = argv[0] && !argv[0].startsWith('-') ? argv[0] : null;
-	if (sub && !['pin', 'accept', 'burn-down'].includes(sub)) { console.error(`Unknown subcommand: ${sub}`); console.error(HELP); process.exit(2); }
+	if (sub && !['pin', 'accept', 'burn-down', 'ship'].includes(sub)) { console.error(`Unknown subcommand: ${sub}`); console.error(HELP); process.exit(2); }
+
+	// ship runs before spec validation: a target: tag naming the just-shipped code is
+	// exactly what it is here to fix, so the spec is expected to be invalid until it runs.
+	if (sub === 'ship') {
+		await runShip(argv.slice(1), repoRoot);
+		return;
+	}
 
 	const spec = await loadSpec(repoRoot);
-	exitIfSpecInvalid(repoRoot, spec);
+	exitIfSpecInvalid(repoRoot, spec, lastShippedRelease(repoRoot));
 	const { aspects: allAspects, features: allFeatures, releases } = spec;
 
 	if (sub === 'burn-down') {
@@ -219,6 +238,71 @@ async function printBurnDown(args, { aspectsDir, repoRoot, allAspects, allFeatur
 	const cells = new Map(columns.map(c => [c.aspect, c.cells]));
 	const report = burnDown({ features: allFeatures, aspects: allAspects, releases, cellOf: (feature, aspect) => cells.get(aspect.name).get(feature.code) });
 	console.log(args.includes('--json') ? JSON.stringify(report, null, 2) : formatBurnDown(report));
+}
+
+// ── Ship ─────────────────────────────────────────────────────────────────────
+
+/**
+ * Strip `<CODE>`'s `target:` tags from the feature inventory, after tess's own
+ * `release.mjs ship` has made it non-current. Reads the inventory itself
+ * (`loadSpec`), rather than the caller's already-validated `spec`, because the
+ * spec at this point is expected to be invalid — the tag this command exists
+ * to remove is exactly what would fail validation.
+ */
+async function runShip(args, repoRoot) {
+	const dryRun = args.includes('--dry-run');
+	const positional = args.filter(a => a !== '--dry-run');
+	const option = positional.find(a => a.startsWith('-'));
+	if (option) { console.error(`Unknown option: ${option}`); console.error(HELP); process.exit(2); }
+	if (positional.length > 1) { console.error(`Unexpected argument: ${positional[1]}`); console.error(HELP); process.exit(2); }
+
+	const code = positional[0] ?? lastShippedRelease(repoRoot);
+	if (!code) {
+		console.error('name the shipped release: coverage.mjs ship <CODE>');
+		process.exit(2);
+	}
+
+	const { features, releases } = await loadSpec(repoRoot);
+	const refusal = shipGuard(releases, code);
+	if (refusal) {
+		console.error(refusal);
+		process.exit(1);
+	}
+
+	const plan = planShip({ features, code });
+	printShipPlan(plan, code, repoRoot);
+	if (dryRun) { console.log('\nDry run — nothing changed.'); return; }
+
+	await applyShip(plan, code);
+
+	const after = await loadSpec(repoRoot);
+	const errors = validateSpec({ repoRoot, ...after });
+	if (errors.length) {
+		for (const error of errors) console.error(error);
+		console.error(`\nrubric spec: ${errors.length} error(s) after stripping ${code} — field rules are in rubric/schema.md`);
+		process.exit(1);
+	}
+
+	console.log(`stripped ${code}: ${shipCounts(plan).join(', ')} in ${plan.edits.length} file${plan.edits.length === 1 ? '' : 's'}`);
+}
+
+const shipCounts = (plan) => [
+	`${plan.edits.filter(e => e.featureTarget).length} feature targets`,
+	`${plan.edits.reduce((n, e) => n + e.capabilities, 0)} capability targets`,
+];
+
+function printShipPlan(plan, code, repoRoot) {
+	if (plan.edits.length === 0) {
+		console.log(`No feature file carries target: ${code}.`);
+		return;
+	}
+	console.log(`Strip target: ${code} from ${plan.edits.length} feature file${plan.edits.length === 1 ? '' : 's'}:`);
+	for (const edit of plan.edits) {
+		const parts = [];
+		if (edit.featureTarget) parts.push('feature target');
+		if (edit.capabilities) parts.push(`${edit.capabilities} capability target${edit.capabilities === 1 ? '' : 's'}`);
+		console.log(`  ${relative(repoRoot, edit.path).split(sep).join('/')}: ${parts.join(', ')}`);
+	}
 }
 
 // ── Manual overrides: pin / accept ───────────────────────────────────────────

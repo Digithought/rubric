@@ -13,6 +13,7 @@
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { lastShippedRelease } from './lib/git.mjs';
 import { exitIfSpecInvalid, loadSpec } from './lib/validate.mjs';
 
 const RUBRIC_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -33,7 +34,7 @@ async function main() {
 		console.error(`No features found under ${join(repoRoot, 'features')}. Did you run rubric init?`);
 		process.exit(1);
 	}
-	exitIfSpecInvalid(repoRoot, spec);
+	exitIfSpecInvalid(repoRoot, spec, lastShippedRelease(repoRoot));
 	console.log(`rubric spec: ${spec.features.length} features, ${spec.aspects.length} aspects — clean`);
 }
 

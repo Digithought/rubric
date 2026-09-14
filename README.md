@@ -124,6 +124,7 @@ node rubric/scripts/coverage.mjs --aspect code --stale   # just the stale/missin
 node rubric/scripts/coverage.mjs pin SCN-ENT-CMP code    # reaffirm without re-auditing
 node rubric/scripts/coverage.mjs accept SCN-HIER code    # keep verdict, rehash to current spec
 node rubric/scripts/coverage.mjs burn-down          # the current release's outstanding work
+node rubric/scripts/coverage.mjs ship BETA          # after tess ships BETA, strip its target: tags
 node rubric/scripts/run.mjs --stale-only            # re-audit only what drifted, most-churned first
 ```
 
@@ -153,6 +154,7 @@ node rubric/scripts/run.mjs --target GA            # audit only the work deferre
 node rubric/scripts/run.mjs --resume last          # pick up an interrupted run
 node rubric/scripts/coverage.mjs                   # freshness matrix; pin / accept subcommands
 node rubric/scripts/coverage.mjs burn-down         # current release: not implemented, open coverage cells
+node rubric/scripts/coverage.mjs ship [<CODE>]     # strip a shipped release's target: tags (defaults to tess's last ship commit)
 ```
 
 **UI** (Svelte 5 + Vite, in `rubric/ui/`). Browse features, inspect aspect configs and resolved prompts, view run logs, and read the coverage matrix — color-coded by freshness — at a glance.
