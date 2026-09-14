@@ -53,11 +53,14 @@ test('adding or removing a top-level target: changes nothing while no capability
 	assert.equal(fingerprint(file(...BASE, 'target: GA'), { releases: BETA_GA }), fingerprint(file(...BASE), { releases: BETA_GA }));
 });
 
-test('a capability deferred to a later release is left out until that release is current, then counts as if plain', () => {
+test('a capability deferred to a later release is left out until that release is current, then counts as if plain — in a block or an inline list', () => {
 	const raw = file('status: planned', 'capabilities:', '  - Pick an entity', '  - text: Export to KML', '    target: GA');
+	const inline = file('status: planned', 'capabilities: [Pick an entity, { text: Export to KML, target: GA }]');
 
 	assert.equal(fingerprint(raw, { releases: BETA_GA }), sha12(file('status: planned', 'capabilities:', '  - Pick an entity')));
 	assert.equal(fingerprint(raw, { releases: GA_ONLY }), sha12(file('status: planned', 'capabilities:', '  - Pick an entity', '  - Export to KML')));
+	assert.equal(fingerprint(inline, { releases: BETA_GA }), sha12(file('status: planned', 'capabilities: [Pick an entity]')));
+	assert.equal(fingerprint(inline, { releases: GA_ONLY }), sha12(file('status: planned', 'capabilities: [Pick an entity, Export to KML]')));
 });
 
 test('retagging a feature from GA to current takes its GA capabilities out of scope, which changes the fingerprint', () => {

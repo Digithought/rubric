@@ -78,7 +78,7 @@ export function upsertRecord(ledger, code, record) {
  * (only their overlap with the aspect's counts) and the release tag (only which
  * capabilities are in scope counts).
  */
-// NOTE: a dropped key's span leaves the blank lines around it, so a settings block added together with a new blank line still changes the other aspects' fingerprints; if audits that write their own aspects.<name> block turn out to add one, also drop the blank lines directly before a dropped key.
+// NOTE: a dropped key's span leaves the blank lines around it, so a settings block added together with a new blank line still changes the other aspects' fingerprints; if audits that write their own aspects.<name> block turn out to add one, also drop the blank lines directly before a dropped key. Conversely a block key's span owns the column-0 comment lines after it, so a block inserted above such a comment takes it out of every aspect's fingerprint; no SiteCAD feature has one (2026-09-14) — if they appear, stop a dropped span before trailing column-0 comments.
 const UNFINGERPRINTED_KEYS = new Set(['aspects', 'surfaces', 'target']);
 
 /**

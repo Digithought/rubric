@@ -243,8 +243,8 @@ function shouldDispatch(manifest, descriptor, staleSet) {
 
 async function dispatchLoop({ opts, aspectsDir, runsDir, repoRoot, releases, target, manifest, descriptors, staleSet }) {
 	const dir = runDir(runsDir, manifest.run);
-	const promptCache = new Map();   // aspect.name → { prompt, tpl }
-	const ledgerCache = new Map();   // aspect.name → { ledger, aspectHash, snapshot }
+	const promptCache = new Map();   // aspect.name → { prompt, tpl, aspectHash }
+	const ledgerCache = new Map();   // aspect.name → { ledger, snapshot }
 	let failuresWithoutBlocker = 0;
 	const recordsCoverage = target.kind !== 'release';
 	if (!recordsCoverage) console.log('ledger not updated — audits for a later release do not record current coverage');
@@ -278,12 +278,15 @@ async function dispatchLoop({ opts, aspectsDir, runsDir, repoRoot, releases, tar
 			continue;
 		}
 
-		// Resolve aspect prompt/template once per aspect.
+		// Resolve aspect prompt/template once per aspect. The aspect hash is taken
+		// with them, so the ledger records the instructions the audits were given
+		// even if they are edited while a batch runs.
 		if (!promptCache.has(d.aspect.name)) {
 			try {
 				promptCache.set(d.aspect.name, {
 					prompt: await readPrompt(d.aspect),
 					tpl: await readTicketTemplate(d.aspect),
+					aspectHash: await resolveAspectHash(d.aspect),
 				});
 			} catch (e) {
 				console.error(`  ${d.aspect.name}: ${e.message} — skipping aspect.`);
@@ -366,7 +369,7 @@ async function dispatchLoop({ opts, aspectsDir, runsDir, repoRoot, releases, tar
 			try {
 				await updateLedger({
 					aspectsDir, repoRoot, releases,
-					aspect: d.aspect, features: d.features, reported,
+					aspect: d.aspect, aspectHash: promptCache.get(d.aspect.name).aspectHash, features: d.features, reported,
 					runId: manifest.run, finishedAt,
 					ledgerCache,
 				});
@@ -427,23 +430,20 @@ async function guardBatchEdits({ repoRoot, aspect, features, beforeAudit }) {
 
 /**
  * Lift a batch's non-blocked verdicts + evidence into the aspect's coverage
- * ledger, upserting one record per feature. The ledger (and its aspect-hash) is
- * cached per aspect across batches so we hash the config once and rewrite the
- * file after each of the aspect's batches. Each feature is fingerprinted from
- * its file as the audit left it. `pinned` is preserved from any prior record; a
- * `blocked` verdict is skipped so it never clobbers a real audit.
+ * ledger, upserting one record per feature. The ledger is cached per aspect
+ * across batches and rewritten after each of the aspect's batches. `aspectHash`
+ * is the one taken when the aspect's prompt was read for dispatch. Each feature
+ * is fingerprinted from its file as the audit left it. `pinned` is preserved
+ * from any prior record; a `blocked` verdict is skipped so it never clobbers a
+ * real audit.
  */
-async function updateLedger({ aspectsDir, repoRoot, releases, aspect, features, reported, runId, finishedAt, ledgerCache }) {
+async function updateLedger({ aspectsDir, repoRoot, releases, aspect, aspectHash, features, reported, runId, finishedAt, ledgerCache }) {
 	let entry = ledgerCache.get(aspect.name);
 	if (!entry) {
-		entry = {
-			ledger: await readLedger(aspectsDir, aspect.name),
-			aspectHash: await resolveAspectHash(aspect),
-			snapshot: {},
-		};
+		entry = { ledger: await readLedger(aspectsDir, aspect.name), snapshot: {} };
 		ledgerCache.set(aspect.name, entry);
 	}
-	const { ledger, aspectHash, snapshot } = entry;
+	const { ledger, snapshot } = entry;
 	const head = gitHead(repoRoot);
 	const byCode = new Map(features.map(f => [f.code, f]));
 
