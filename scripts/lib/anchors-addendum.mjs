@@ -10,9 +10,7 @@
  * there rather than creating an orphaned folder.
  */
 
-import { existsSync, statSync } from 'node:fs';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { writeTessAddendum } from './tess-addendum.mjs';
 
 /** Path to the generated file, relative to the project root. */
 export const ANCHORS_ADDENDUM_PATH = 'tickets/rules/rubric-anchors.md';
@@ -31,32 +29,7 @@ Written by \`node rubric/scripts/init.mjs\`; hand edits are overwritten on the n
 `;
 }
 
-/**
- * Write (or refresh) `tickets/rules/rubric-anchors.md` under `repoRoot`.
- * Returns `'created'`, `'updated'`, `'unchanged'`, or `'skipped'` (no
- * `tickets/` directory — not a tess project).
- *
- * Compares against the existing file with CRLF normalised to LF, so a CRLF
- * checkout that already matches is left untouched rather than flipped to LF.
- * `tickets/rules` existing as a file (not a directory) is not handled here —
- * `mkdir` throws naming the path (`EEXIST` on Windows, `ENOTDIR` elsewhere),
- * and the caller lets that surface.
- */
-export async function writeAnchorsAddendum(repoRoot) {
-	const ticketsDir = join(repoRoot, 'tickets');
-	if (!statSync(ticketsDir, { throwIfNoEntry: false })?.isDirectory()) return 'skipped';
-
-	const filePath = join(repoRoot, ANCHORS_ADDENDUM_PATH);
-	const next = renderAnchorsAddendum();
-
-	if (existsSync(filePath)) {
-		const cur = await readFile(filePath, 'utf-8');
-		if (cur.replace(/\r\n/g, '\n') === next) return 'unchanged';
-		await writeFile(filePath, next, 'utf-8');
-		return 'updated';
-	}
-
-	await mkdir(join(ticketsDir, 'rules'), { recursive: true });
-	await writeFile(filePath, next, 'utf-8');
-	return 'created';
+/** Write (or refresh) the addendum under `repoRoot`; see `writeTessAddendum` for the return values. */
+export function writeAnchorsAddendum(repoRoot) {
+	return writeTessAddendum(repoRoot, ANCHORS_ADDENDUM_PATH, renderAnchorsAddendum());
 }

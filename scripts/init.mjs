@@ -8,7 +8,8 @@
  *
  * Also adds .runs/ to .gitignore (with .gitkeep carve-out), regenerates
  * tickets/rules/rubric-anchors.md when tickets/ exists (see
- * lib/anchors-addendum.mjs), and prints next-step pointers. Re-running detects
+ * lib/anchors-addendum.mjs) and tickets/rules/rubric-testing.md beside it
+ * (lib/testing-addendum.mjs), and prints next-step pointers. Re-running detects
  * existing state and only fills in what's missing.
  *
  * Does NOT activate any aspect. Aspect activation is a deliberate, per-project
@@ -19,6 +20,7 @@ import { mkdir, writeFile, readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { ANCHORS_ADDENDUM_PATH, writeAnchorsAddendum } from './lib/anchors-addendum.mjs';
+import { TESTING_ADDENDUM_PATH, writeTestingAddendum } from './lib/testing-addendum.mjs';
 
 const FEATURES_README = `# Feature Inventory
 
@@ -195,10 +197,15 @@ async function main() {
 	await ensureRootAgentRules(repoRoot, created, updated, existed);
 
 	// tickets/rules/rubric-anchors.md — only meaningful for a project using tess
+	const record = (result, path) => {
+		if (result === 'created') created.push(path);
+		else if (result === 'updated') updated.push(path);
+		else if (result === 'unchanged') existed.push(path);
+	};
 	const anchorsResult = await writeAnchorsAddendum(repoRoot);
-	if (anchorsResult === 'created') created.push(ANCHORS_ADDENDUM_PATH);
-	else if (anchorsResult === 'updated') updated.push(ANCHORS_ADDENDUM_PATH);
-	else if (anchorsResult === 'unchanged') existed.push(ANCHORS_ADDENDUM_PATH);
+	record(anchorsResult, ANCHORS_ADDENDUM_PATH);
+	// tickets/rules/rubric-testing.md — the testing policy, carried into every ticket prompt
+	record(await writeTestingAddendum(repoRoot), TESTING_ADDENDUM_PATH);
 
 	// ── Report ──
 	console.log('rubric init');
@@ -215,7 +222,7 @@ async function main() {
 		for (const p of existed) console.log(`    · ${p}`);
 	}
 	if (anchorsResult === 'skipped') {
-		console.log(`  tickets/ not found — skipped ${ANCHORS_ADDENDUM_PATH} (only used with tess)`);
+		console.log(`  tickets/ not found — skipped ${ANCHORS_ADDENDUM_PATH} and ${TESTING_ADDENDUM_PATH} (only used with tess)`);
 	}
 	console.log('');
 	console.log('Next steps:');
