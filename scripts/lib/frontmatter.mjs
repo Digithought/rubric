@@ -276,7 +276,7 @@ function parseScalar(raw) {
 		return s.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, '\\');
 	}
 	if (s.startsWith("'") && s.endsWith("'") && s.length >= 2) {
-		return s.slice(1, -1);
+		return s.slice(1, -1).replace(/''/g, "'");
 	}
 	if (s.startsWith('[') && s.endsWith(']')) {
 		const inner = s.slice(1, -1).trim();

@@ -86,3 +86,8 @@ test('scanFrontmatter: no front-matter, or an unclosed fence, is null', () => {
 	assert.equal(scanFrontmatter('# Just a body\nstatus: planned\n'), null);
 	assert.equal(scanFrontmatter('---\nstatus: planned\n'), null);
 });
+
+test('parseYaml: a single-quoted scalar unescapes doubled apostrophes, and an empty single-quoted scalar stays empty', () => {
+	assert.equal(parseYaml("title: 'It''s here'\n").title, "It's here");
+	assert.equal(parseYaml("title: ''\n").title, '');
+});
