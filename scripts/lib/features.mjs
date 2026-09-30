@@ -185,16 +185,29 @@ export function normaliseCapability(item, line) {
 }
 
 /**
- * The surface vocabulary from `features/README.md` front-matter, as
- * `{ path, line, value }` with `value` as parsed (validateSpec checks its
- * shape), or null when the file or its `surfaces:` key is absent.
+ * One key of the project-level declarations in `features/README.md` front-matter,
+ * as `{ path, line, value }` with `value` as parsed (validateSpec checks its
+ * shape), or null when the file or the key is absent.
  */
-export async function readSurfaceVocabulary(featuresDir) {
+async function readProjectKey(featuresDir, key) {
 	const path = join(featuresDir, 'README.md');
 	let located;
 	try { located = await readFrontmatterWithLines(path); } catch { return null; }
-	if (!Object.hasOwn(located.data, 'surfaces')) return null;
-	return { path, line: located.keyLines.surfaces, value: located.data.surfaces };
+	if (!Object.hasOwn(located.data, key)) return null;
+	return { path, line: located.keyLines[key], value: located.data[key] };
+}
+
+/** The surface vocabulary: the `surfaces:` list in `features/README.md`. */
+export function readSurfaceVocabulary(featuresDir) {
+	return readProjectKey(featuresDir, 'surfaces');
+}
+
+/**
+ * The architecture root: the `architecture:` path in `features/README.md`,
+ * repo-relative — the document that maps the project's concern documents.
+ */
+export function readArchitectureRoot(featuresDir) {
+	return readProjectKey(featuresDir, 'architecture');
 }
 
 /**

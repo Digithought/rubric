@@ -5,11 +5,12 @@
  * `schema.md`; this module only says when a value is wrong.
  */
 
+import { existsSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { annotationSchema, discoverActiveAspects } from './aspects.mjs';
-import { aspectApplies, nearestDeclaring, ownTarget, readSurfaceVocabulary, walkFeatures } from './features.mjs';
+import { aspectApplies, nearestDeclaring, ownTarget, readArchitectureRoot, readSurfaceVocabulary, walkFeatures } from './features.mjs';
 import { isMapping } from './frontmatter.mjs';
 import { RELEASES_FILE, readReleaseList, releaseRank } from './releases.mjs';
 
@@ -21,13 +22,14 @@ const ANNOTATION_TYPES = ['string', 'number', 'boolean', 'enum', 'list'];
 /** Discover everything `validateSpec` reads for the project at `repoRoot`. */
 export async function loadSpec(repoRoot) {
 	const featuresDir = join(repoRoot, 'features');
-	const [features, aspects, vocabulary, releases] = await Promise.all([
+	const [features, aspects, vocabulary, architecture, releases] = await Promise.all([
 		walkFeatures(featuresDir),
 		discoverActiveAspects(join(repoRoot, 'aspects'), DEFAULTS_DIR),
 		readSurfaceVocabulary(featuresDir),
+		readArchitectureRoot(featuresDir),
 		readReleaseList(repoRoot),
 	]);
-	return { features, aspects, vocabulary, releases };
+	return { features, aspects, vocabulary, architecture, releases };
 }
 
 /**
@@ -53,7 +55,7 @@ export function exitIfSpecInvalid(repoRoot, spec, shipped = null) {
  * `lastShippedRelease` found — an unknown target code matching it gets a hint
  * to run `coverage.mjs ship`.
  */
-export function validateSpec({ repoRoot, features, aspects, vocabulary, releases, shipped = null }) {
+export function validateSpec({ repoRoot, features, aspects, vocabulary, architecture = null, releases, shipped = null }) {
 	const found = [];
 	const report = (path, line = 1, message) => {
 		const rel = relative(repoRoot, path).split(sep).join('/');
@@ -61,6 +63,7 @@ export function validateSpec({ repoRoot, features, aspects, vocabulary, releases
 	};
 
 	const vocab = checkVocabulary(vocabulary, report);
+	checkArchitectureRoot(architecture, repoRoot, report);
 	for (const record of [...features, ...aspects]) checkSurfaces(record, vocab, report);
 	checkTargets(features, releases, shipped, report);
 	for (const feature of features) checkCapabilities(feature, report);
@@ -83,6 +86,17 @@ const show = (value) => (typeof value === 'string' ? value : JSON.stringify(valu
 const isScalar = (value) => ['string', 'number', 'boolean'].includes(typeof value);
 
 // ── Surfaces ─────────────────────────────────────────────────────────────────
+
+/** The architecture root in `features/README.md`, when declared, names a file that exists. */
+function checkArchitectureRoot(architecture, repoRoot, report) {
+	if (!architecture) return;
+	const { path, line, value } = architecture;
+	if (typeof value !== 'string' || value.trim() === '') {
+		report(path, line, 'architecture: must be the repo-relative path of the document that maps the concern documents');
+	} else if (!existsSync(join(repoRoot, value))) {
+		report(path, line, `architecture: ${value} does not exist`);
+	}
+}
 
 /**
  * The vocabulary in `features/README.md`. Returns null when none is declared,

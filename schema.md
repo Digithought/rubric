@@ -46,7 +46,7 @@ Retiring a branch means retiring its leaves; once every descendant is `retired`,
 
 A node's effective value is its own declaration, else its nearest ancestor's. A subtree that exists on one surface, or is deferred as a whole, says so once at its top node rather than on every leaf.
 
-- **`surfaces:`** — a non-empty list of names from the [surface vocabulary](#surface-vocabulary); omit the field rather than writing `[]`. A descendant may declare surfaces outside its ancestor's. An aspect that declares `surfaces:` audits a feature only when their surfaces intersect, so a feature with no effective surfaces is not audited by it.
+- **`surfaces:`** — a non-empty list of names from the [surface vocabulary](#project-declarations); omit the field rather than writing `[]`. A descendant may declare surfaces outside its ancestor's. An aspect that declares `surfaces:` audits a feature only when their surfaces intersect, so a feature with no effective surfaces is not audited by it.
 - **`target:`** — a later code from `tickets/releases.md`; anything without one is due in the current release ([principles](agent-rules/principles.md#current-release-assumption)). Naming the current code means the same as no tag. Using `target:` requires the release list to exist, and a descendant cannot target a release before its ancestor's. Once tess ships that release, its code no longer exists in the list, and `node rubric/scripts/coverage.mjs ship <CODE>` strips every `target:` tag naming it, at the feature and the capability level alike.
 
 ### Capabilities
@@ -59,17 +59,19 @@ One block per aspect, keyed by the aspect's folder name, holding the settings it
 
 A block does not inherit: it belongs to the node the aspect audits, and a copy on an ancestor would be dead data. So a block on a feature the aspect does not apply to is an error, retired features excepted.
 
-### Surface vocabulary
+### Project declarations
 
-`features/README.md` declares the surface names in its front-matter:
+`features/README.md` front-matter holds the declarations that apply to the whole project:
 
 ```yaml
 ---
 surfaces: [web, mobile, api, viewer]
+architecture: docs/architecture.md
 ---
 ```
 
-Names match `^[a-z][a-z0-9-]*$` and are listed once. Any `surfaces:` on a feature or aspect requires this list.
+- **`surfaces:`** — the surface vocabulary. Names match `^[a-z][a-z0-9-]*$` and are listed once. Any `surfaces:` on a feature or aspect requires this list.
+- **`architecture:`** — optional; the repo-relative path of the document that maps the project's concern documents. Every audit is handed it, judges what it inspects against the sections that govern it, and cites those documents as evidence ([`principles.md`](agent-rules/principles.md) § *Architecture reaches the code through audits*). The path must exist.
 
 ### Coding scheme
 
@@ -170,7 +172,7 @@ Staleness is **derived at read time** by comparing a record's stored hashes and 
 
 ### Surfaces, parent and annotation
 
-- **`surfaces:`** — names from the [surface vocabulary](#surface-vocabulary), as on features. `level`, `applies-to` and `surfaces` compose: all three must admit a feature.
+- **`surfaces:`** — names from the [surface vocabulary](#project-declarations), as on features. `level`, `applies-to` and `surfaces` compose: all three must admit a feature.
 - **`parent:`** — the folder name of another active aspect that has no `parent:` of its own (one level only). A child is an ordinary folder, `aspects/<child>/`, so its name stays one path segment everywhere an aspect is named. What the hierarchy means: [principles](agent-rules/principles.md#aspect-annotations-surfaces-and-hierarchy). A child takes from its parent:
   - **applicability** — a feature must be admitted by the parent's `level`, `applies-to` and `surfaces` as well as by the child's own, so whatever the child omits it inherits. A child that declares `level:` declares its parent's.
   - **prompt** — its audit's prompt is the parent's, a blank line, then the child's own, which it must have (`prompt.md`, or the default for its `extends`).

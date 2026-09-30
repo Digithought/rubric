@@ -89,6 +89,12 @@ Every rule the system must obey is enforced at the lowest rung that can express 
 
 A new check goes on the ladder before it goes anywhere else. An architecture principle lists its enforcer; a principle with no enforcer is visible debt. A one-off judgment check that no rung below 5 can express is written as an aspect prompt, not contorted into a unit test.
 
+## Architecture reaches the code through audits
+
+Architecture is spec, so it may change before the code does, exactly as a capability may be written before it is built. Nothing records whether the code has caught up: that would be a statement about one aspect's view (the code, or the web client's code but not the mobile client's), and rubric records only where *auditing* stands. Instead every audit, of whatever aspect, judges what it inspects against the architecture sections that govern it as well as against the feature, and cites the documents it relied on as evidence. Changing a document then drift-stales every record that relied on it, and the next audit of each finds the difference and files the gap where that aspect files its gaps.
+
+The project declares its architecture root — the document that maps its concern documents — as `architecture:` in `features/README.md` front-matter ([`schema.md`](../schema.md#project-declarations)); the runner hands it to every audit. A project that declares none gets audits that read the feature alone.
+
 ## Testing policy
 
 Value of a test = P(regression) × cost of regression × P(test catches it) − maintenance. These rules make that arithmetic mechanical.

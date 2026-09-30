@@ -42,6 +42,8 @@ The cardinal rule in [`root.md`](root.md) — a ticket that modifies a feature u
 
 If the change *adds* a user-facing capability, the bullet goes in now. If it removes one, the bullet comes out now.
 
+The same holds for architecture: a change that stops doing what a concern-document section describes has made the section false unless the section was changed first on purpose. Correct it in this pass. Audits will also find the difference ([`principles.md`](principles.md) § *Architecture reaches the code through audits*), but later and at full cost.
+
 ### 5. Optionally, run the cheap aspect check
 
 If an active aspect covers a feature this change touched, and running it is genuinely cheap, run it for that feature alone:

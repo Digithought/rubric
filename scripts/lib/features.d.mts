@@ -38,6 +38,8 @@ export function normaliseCapability(item: unknown, line: number | null): Capabil
 
 export function readSurfaceVocabulary(featuresDir: string): Promise<{ path: string; line: number; value: unknown } | null>;
 
+export function readArchitectureRoot(featuresDir: string): Promise<{ path: string; line: number; value: unknown } | null>;
+
 export function aspectApplies(aspect: AspectRecord, feature: FeatureRecord): boolean;
 
 export function filterFeatures(features: FeatureRecord[], aspect: AspectRecord): FeatureRecord[];

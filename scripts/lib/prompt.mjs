@@ -25,6 +25,7 @@ export function buildAuditPrompt({
 	target,          // the run's release target (cli.mjs runTarget)
 	releases,        // readReleaseList's result
 	knownBlockers = [],   // open blockers from earlier batches this run
+	architecture = null,  // repo-relative path of the architecture root, when the project declares one
 }) {
 	const aspectName = aspect.name;
 	const ticketDir = target.kind === 'release' ? `backlog/${target.code}` : (aspect.data['ticket-stage'] || 'plan');
@@ -39,6 +40,14 @@ export function buildAuditPrompt({
 
 	const settingsSection = settings
 		? `\n## Feature settings for this aspect\n\nEach feature's \`settings:\` line is what this audit uses for it: the defaults in \`aspects/${aspectName}/aspect.md\`, overridden by the feature's own \`aspects.${aspectName}\` block in its front-matter.\n\nThese settings are the one exception to "do not edit content". When the aspect prompt asks you to record a value, write it only under \`aspects.${aspectName}\` in that feature's front-matter, only keys the annotation declares (${Object.keys(settings).map(k => `\`${k}\``).join(', ')}), and change nothing else in the file.\n`
+		: '';
+
+	const architectureSection = architecture
+		? `
+## Architecture
+
+The features say *what* the project does; *how* anything is built is specified separately, in the concern documents mapped by \`${architecture}\`. That is spec too, and it may be ahead of what you inspect. Whatever you inspect for this aspect, judge it against the sections that govern it as well as against the feature: when what you find departs from what a governing section says, and the departure bears on what this aspect judges, that is a gap. Read only the sections that govern what you inspected — the map says which documents those are — and list each document you relied on in \`## Evidence\`, so that a change to it re-audits this pair.
+`
 		: '';
 
 	const blockerSection = knownBlockers.length
@@ -67,7 +76,7 @@ ${aspectPromptBody.trim()}
 ${featureList}
 
 Each feature's full spec is in the listed file. Read the front-matter (\`status\`, \`summary\`, \`description\`, \`capabilities\`, \`related\`) and the body before deciding.
-${settingsSection}${blockerSection}${tplSection}
+${architectureSection}${settingsSection}${blockerSection}${tplSection}
 ## Run log
 
 When finished, write a single run log file at:

@@ -36,10 +36,10 @@ const BATCH = [
 const PCK = feature('SCN-PCK', 'Picking', { capabilities: [cap('Pick an entity'), cap('Pick through terrain', 'GA'), cap('Pick by voice', 'LATER')] });
 const KML = feature('EXP-KML', 'KML export', { target: 'GA', capabilities: [cap('Export to KML'), cap('Export styles', 'LATER')] });
 
-const promptFor = (aspect, { features = BATCH, target = 'current', releases = OFF, ticketTemplateBody = null } = {}) => buildAuditPrompt({
+const promptFor = (aspect, { features = BATCH, target = 'current', releases = OFF, ticketTemplateBody = null, architecture = null } = {}) => buildAuditPrompt({
 	aspect, aspectPromptBody: 'Audit it.', ticketTemplateBody, features, repoRoot: ROOT,
 	runLogPath: resolve(ROOT, '.runs', 'r1', `${aspect.name}-batch1.md`), runId: 'r1', runStartedAt: '2026-09-13T00:00:00Z',
-	target: resolveTarget(target, releases), releases,
+	target: resolveTarget(target, releases), releases, architecture,
 });
 /** The prompt's lines listing the batch. */
 const featureLines = (prompt) => prompt.split('## Features in this batch\n\n')[1].split('\n\n')[0];
@@ -106,4 +106,21 @@ test('buildAuditPrompt: with no release list the prompt has no release wording a
 	for (const ticketTemplateBody of [null, 'TEMPLATE']) {
 		assert.doesNotMatch(promptFor(code, { features: [PCK, KML], ticketTemplateBody }), /deferred|audit only|backlog|target|release/i);
 	}
+});
+
+// Contract: agent-rules/principles.md § The three axes — architecture is spec, and agent-rules/audit.md § Inputs
+// has every aspect's audit judge what it inspects against it.
+
+test('buildAuditPrompt: with an architecture root, every aspect is told to judge against the governing sections and cite them as evidence', () => {
+	for (const aspect of [code, performance]) {
+		const prompt = promptFor(aspect, { architecture: 'docs/architecture.md' });
+
+		assert.match(prompt, /\n## Architecture\n/);
+		assert.match(prompt, /concern documents mapped by `docs\/architecture\.md`/);
+		assert.match(prompt, /list each document you relied on in `## Evidence`, so that a change to it re-audits this pair/);
+	}
+});
+
+test('buildAuditPrompt: a project that declares no architecture root gets no architecture section', () => {
+	assert.doesNotMatch(promptFor(code), /## Architecture/);
 });

@@ -7,6 +7,7 @@ Run a single aspect against a batch of features. You are invoked with: an aspect
 1. **The aspect.** Read `aspects/<name>/aspect.md` for config. Read `aspects/<name>/prompt.md` for instructions; if absent, fall back to `rubric/defaults/aspects/<extends>/prompt.md` (where `extends` defaults to `<name>`). Read the ticket template the same way. For a child aspect (`parent:`) the runner hands you the composed prompt — the parent's, then the child's own — and the template falls back to the parent's ([`schema.md`](../schema.md#surfaces-parent-and-annotation)).
 2. **The features.** For each code in the batch, read its file from `features/`. Pay attention to `summary`, `description`, `capabilities`, and `related`.
 3. **The project.** You may search the codebase, read ticket queues, examine help content, etc. — whatever the aspect's prompt directs.
+4. **The architecture.** When the project declares an architecture root (default to docs/), the runner names it. Read the sections that govern what you inspect, judge against them as well as against the feature, and list the documents you relied on as evidence ([`principles.md`](principles.md) § *Architecture reaches the code through audits*).
 
 ## Procedure
 

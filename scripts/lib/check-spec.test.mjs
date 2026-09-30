@@ -49,3 +49,15 @@ test('check-spec: a root with no features exits 1; a bad argument exits 2', asyn
 	assert.equal(checkSpec('--root').status, 2);
 	assert.equal(checkSpec('--strict').status, 2);
 });
+
+test('check-spec: an architecture root in features/README.md must name a file that exists', async () => {
+	await withTree({ ...CLEAN, 'features/README.md': fm('architecture: docs/missing.md') }, (root) => {
+		const run = checkSpec('--root', root);
+
+		assert.equal(run.status, 1);
+		assert.equal(lines(run.stderr)[0], 'features/README.md:2: architecture: docs/missing.md does not exist');
+	});
+	await withTree({ ...CLEAN, 'features/README.md': fm('architecture: docs/architecture.md'), 'docs/architecture.md': '# Architecture\n' }, (root) => {
+		assert.equal(checkSpec('--root', root).status, 0);
+	});
+});

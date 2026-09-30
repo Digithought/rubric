@@ -62,19 +62,20 @@ async function main() {
 	const spec = await loadSpec(repoRoot);
 	exitIfSpecInvalid(repoRoot, spec, lastShippedRelease(repoRoot));
 	const { aspects: allAspects, features: allFeatures, releases } = spec;
+	const architecture = spec.architecture?.value ?? null;
 	await mkdir(runsDir, { recursive: true });
 
 	if (opts.resume) {
-		await resume(opts, { aspectsDir, runsDir, repoRoot, allAspects, allFeatures, releases });
+		await resume(opts, { aspectsDir, runsDir, repoRoot, allAspects, allFeatures, releases, architecture });
 		return;
 	}
-	await freshRun(opts, { aspectsDir, runsDir, repoRoot, allAspects, allFeatures, releases });
+	await freshRun(opts, { aspectsDir, runsDir, repoRoot, allAspects, allFeatures, releases, architecture });
 }
 
 // ── Fresh run: discover, plan, manifest, dispatch ────────────────────────────
 
 async function freshRun(opts, ctx) {
-	const { aspectsDir, runsDir, repoRoot, allAspects, allFeatures, releases } = ctx;
+	const { aspectsDir, runsDir, repoRoot, allAspects, allFeatures, releases, architecture } = ctx;
 	const target = exitOnUsageError(runTarget(opts, releases));
 
 	if (allAspects.length === 0) {
@@ -161,13 +162,13 @@ async function freshRun(opts, ctx) {
 	await writeManifest(runsDir, manifest);
 	console.log(`\nrun: ${runId}  (manifest: ${rel(join(runDir(runsDir, runId), 'manifest.md'), repoRoot)})`);
 
-	await dispatchLoop({ opts, aspectsDir, runsDir, repoRoot, releases, target, manifest, descriptors, staleSet: new Set() });
+	await dispatchLoop({ opts, aspectsDir, runsDir, repoRoot, releases, architecture, target, manifest, descriptors, staleSet: new Set() });
 }
 
 // ── Resume: replay a prior run from its manifest ─────────────────────────────
 
 async function resume(opts, ctx) {
-	const { aspectsDir, runsDir, repoRoot, allAspects, allFeatures, releases } = ctx;
+	const { aspectsDir, runsDir, repoRoot, allAspects, allFeatures, releases, architecture } = ctx;
 	const runId = await resolveRunId(runsDir, opts.resume);
 	if (!runId) { console.error(`No resumable run found for "${opts.resume}".`); process.exit(1); }
 	const manifest = await readManifest(runsDir, runId);
@@ -222,7 +223,7 @@ async function resume(opts, ctx) {
 		}
 		return;
 	}
-	await dispatchLoop({ opts, aspectsDir, runsDir, repoRoot, releases, target, manifest, descriptors, staleSet });
+	await dispatchLoop({ opts, aspectsDir, runsDir, repoRoot, releases, architecture, target, manifest, descriptors, staleSet });
 }
 
 // ── Shared dispatch loop + state machine ─────────────────────────────────────
@@ -241,7 +242,7 @@ function shouldDispatch(manifest, descriptor, staleSet) {
 	return true;
 }
 
-async function dispatchLoop({ opts, aspectsDir, runsDir, repoRoot, releases, target, manifest, descriptors, staleSet }) {
+async function dispatchLoop({ opts, aspectsDir, runsDir, repoRoot, releases, architecture, target, manifest, descriptors, staleSet }) {
 	const dir = runDir(runsDir, manifest.run);
 	const promptCache = new Map();   // aspect.name → { prompt, tpl, aspectHash }
 	const ledgerCache = new Map();   // aspect.name → { ledger, snapshot }
@@ -317,6 +318,7 @@ async function dispatchLoop({ opts, aspectsDir, runsDir, repoRoot, releases, tar
 			target,
 			releases,
 			knownBlockers,
+			architecture,
 		});
 
 		console.log(`\n→ ${d.id}: ${d.features.map(f => f.code).join(', ')}`
