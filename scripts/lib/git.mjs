@@ -80,7 +80,7 @@ export function commitsTouching(cwd, sinceCommit, globs) {
 	const out = git(cwd, ['log', `${sinceCommit}..HEAD`, '--name-only', '--format=%x00%H']);
 	if (out == null) return { count: 0, unverifiable: true };
 
-	const regexes = globs.map(globToRegex);
+	const regexes = globs.map(g => globToRegex(evidencePath(g)));
 	// `%x00%H` prefixes each commit with a NUL, so splitting the whole log on NUL
 	// yields one block per commit (the first split element, before any NUL, is empty).
 	const blocks = out.split('\0').slice(1);
@@ -91,6 +91,19 @@ export function commitsTouching(cwd, sinceCommit, globs) {
 		if (files.some(f => regexes.some(r => r.test(f)))) count++;
 	}
 	return { count, unverifiable: false };
+}
+
+/**
+ * The file an evidence entry names. Audits cite a document section as
+ * `docs/x.md#section`, sometimes trailed by an aside — `docs/x.md#section (topic)`.
+ * The section narrows what was read *within* the file, but git reports files, so
+ * left on the glob it matched no path and the record could never go drift-stale:
+ * editing the very section an audit relied on went unnoticed. Stripped here, where
+ * the ledger's entries meet git, so records written before this existed are
+ * covered too.
+ */
+export function evidencePath(entry) {
+	return String(entry).replace(/\s+\(.*\)\s*$/, '').replace(/#.*$/, '').trim();
 }
 
 /** Compile a repo-relative glob (`**`, `*`, literals) to an anchored RegExp. */

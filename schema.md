@@ -222,7 +222,7 @@ Free-form agent reasoning, evidence sketches, follow-ups.
 
 ### Evidence section
 
-The `## Evidence` section records, per feature, the **paths the audit actually inspected** to reach its verdict — one bullet `<CODE>: <comma-separated paths>` (globs allowed, repo-relative, forward slash). It is the input to drift-based staleness: the runner stores these paths in the coverage ledger, and a later run recomputes freshness by asking git whether any commit since the audit touched them. Use `(none)` when there is nothing to inspect (e.g. an `n/a` verdict) — such a record can never go drift-stale. Report only paths you genuinely consulted; over-broad globs cause needless re-audits, too-narrow ones let drift slip through.
+The `## Evidence` section records, per feature, the **paths the audit actually inspected** to reach its verdict — one bullet `<CODE>: <comma-separated paths>` (globs allowed, repo-relative, forward slash). It is the input to drift-based staleness: the runner stores these paths in the coverage ledger, and a later run recomputes freshness by asking git whether any commit since the audit touched them. A path may cite a section of a document (`docs/x.md#section`); drift is judged on the file, since git reports files, so any commit touching that document counts. Use `(none)` when there is nothing to inspect (e.g. an `n/a` verdict) — such a record can never go drift-stale. Report only paths you genuinely consulted; over-broad globs cause needless re-audits, too-narrow ones let drift slip through.
 
 ### Blockers in the run log
 
