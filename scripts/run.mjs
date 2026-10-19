@@ -40,6 +40,7 @@ import { runAgent } from './lib/agent.mjs';
 import { readRun } from './lib/runs.mjs';
 import { gitHead, lastShippedRelease } from './lib/git.mjs';
 import { readLedger, writeLedger, upsertRecord } from './lib/ledger.mjs';
+import { needsRouting, parseRouting, routeCommand } from './lib/routing.mjs';
 import { cellFor, featureFingerprintFor, resolveAspectHash } from './lib/coverage-cell.mjs';
 import { editedOutsideBlock, snapshotBatch } from './lib/edit-guard.mjs';
 import { resolveStaleness, isStale } from './lib/freshness.mjs';
@@ -437,7 +438,10 @@ async function guardBatchEdits({ repoRoot, aspect, features, beforeAudit }) {
  * is the one taken when the aspect's prompt was read for dispatch. Each feature
  * is fingerprinted from its file as the audit left it. `pinned` is preserved
  * from any prior record; a `blocked` verdict is skipped so it never clobbers a
- * real audit.
+ * real audit. The routing (`ticket` / `no-ticket`) comes from this verdict's
+ * note alone: a prior record's ticket is not carried forward, because when the
+ * finding recurs after that ticket completed, re-attaching it would hide a
+ * regression that needs a new one.
  */
 async function updateLedger({ aspectsDir, repoRoot, releases, aspect, aspectHash, features, reported, runId, finishedAt, ledgerCache }) {
 	let entry = ledgerCache.get(aspect.name);
@@ -454,6 +458,7 @@ async function updateLedger({ aspectsDir, repoRoot, releases, aspect, aspectHash
 		const feat = byCode.get(v.code);
 		if (!feat) continue;                        // code not in this batch (invented / mistyped)
 		const existing = ledger.records[v.code];
+		const { ticket, noTicket } = parseRouting(v.verdict, v.note);
 		upsertRecord(ledger, v.code, {
 			verdict: v.verdict,
 			audited: finishedAt,
@@ -462,19 +467,16 @@ async function updateLedger({ aspectsDir, repoRoot, releases, aspect, aspectHash
 			'aspect-hash': aspectHash,
 			evidence: reported.evidence?.[v.code] ?? [],
 			run: runId,
-			ticket: parseTicketPath(v.note),
+			ticket,
+			...(noTicket ? { 'no-ticket': noTicket } : {}),
 			pinned: existing?.pinned === true,
 		});
 		snapshot[v.code] = { freshness: 'fresh', drift: 0 };   // just audited → fresh at write time
+		if (needsRouting(v.verdict) && !ticket && !noTicket) {
+			console.warn(`  ⚠ ${v.code} — ${v.verdict} names no ticket path and no no-ticket reason; after the run: ${routeCommand(v.code, aspect.name)}`);
+		}
 	}
 	await writeLedger(aspectsDir, aspect.name, ledger, snapshot);
-}
-
-/** Pull a ticket path out of a verdict note like `gap (ticket: tickets/plan/x.md)`. */
-function parseTicketPath(note) {
-	if (!note) return null;
-	const m = String(note).match(/ticket:\s*([^\s)]+)/i);
-	return m ? m[1] : null;
 }
 
 /**

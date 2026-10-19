@@ -549,6 +549,7 @@ export interface CoverageCell {
 	unverifiable?: boolean;
 	audited?: string;
 	ticket?: string | null;
+	noTicket?: string | null;
 	pinned?: boolean;
 }
 
@@ -596,6 +597,7 @@ async function buildCoverage(opts: ApiOptions): Promise<{ columns: string[]; mat
 					unverifiable: cell.unverifiable || undefined,
 					audited: typeof record.audited === 'string' ? record.audited : undefined,
 					ticket: record.ticket ?? null,
+					noTicket: record['no-ticket'] ?? null,
 					pinned: record.pinned === true || undefined,
 				};
 			}

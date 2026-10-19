@@ -101,10 +101,17 @@ Below the front-matter, include:
 
 1. A \`## Verdicts\` section with one bullet per feature in the form:
    - \`<CODE> — covered\` (with a short evidence note)
-   - \`<CODE> — gap (ticket: <relative-path>)\`
-   - \`<CODE> — partial (ticket: <relative-path>)\` and the scope of the partial
+   - \`<CODE> — gap (ticket: <repo-relative path>)\` / \`<CODE> — partial (ticket: <repo-relative path>)\`, followed by the scope of the partial
+   - \`<CODE> — gap (no-ticket: <reason>)\` / \`<CODE> — partial (no-ticket: <reason>)\`, followed by a sentence saying which part and why
    - \`<CODE> — n/a (<short reason>)\`
    - \`<CODE> — blocked (<blocker-id>)\` — couldn't audit it because of a shared blocker (see below)
+
+   Every gap and partial names exactly one of the two. The \`<reason>\` is one of:
+   - \`unverified\` — nothing observed is broken, but part of the flow could not be exercised (a tool limitation, a missing secret or external service, state the audit could not reach).
+   - \`below-bar\` — a real defect the project's filing rules say not to ticket; the sentence describes it.
+   - \`unbuilt\` — the missing part is a capability the feature file's own \`status:\` already records as not implemented.
+
+   Write the path bare, with no backticks. When re-confirming a finding that already has a ticket, cite that ticket's path again: it carries over only if repeated. When the finding is already ticketed under another feature, cite that ticket. Prose such as "same as prior" or "none" is not a routing and fails the ledger check.
 2. A \`## Evidence\` section with one bullet per feature recording the **paths you actually inspected** to reach the verdict — the source files, tests, help pages, etc. This drives drift-based staleness: a future run re-audits this pair only when git shows a commit touched one of these paths. Report what you genuinely consulted — over-broad globs force needless re-audits, too-narrow ones let real drift slip through. Use \`(none)\` when there was nothing to inspect (e.g. an \`n/a\` verdict). Form:
    - \`<CODE>: <comma-separated repo-relative paths, forward slash, globs ok>\`
    - \`<CODE>: (none)\`

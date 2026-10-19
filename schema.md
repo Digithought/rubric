@@ -197,6 +197,7 @@ finished: 2026-05-07T14:25:18Z
 batch:
   - SCN-ENT-CMP
   - SCN-HIER
+  - SCN-PCK
   - INT-SEL
 runner: <runId>
 blockers: []                   # shared conditions observed; see below
@@ -205,14 +206,16 @@ blockers: []                   # shared conditions observed; see below
 ## Verdicts
 
 - SCN-ENT-CMP — covered (links to in-app help section "Components")
-- SCN-HIER — gap; ticket filed: tickets/plan/help-scn-hier.md
-- INT-SEL — n/a; feature is internal to the editor scaffolding
+- SCN-HIER — gap (ticket: tickets/plan/help-scn-hier.md)
+- SCN-PCK — partial (no-ticket: unbuilt) — help covers picking entities; picking through terrain is not built yet, as the feature's status says
+- INT-SEL — n/a (feature is internal to the editor scaffolding)
 - TER-LYR — blocked (env/db-down)
 
 ## Evidence
 
 - SCN-ENT-CMP: packages/site-cad/src/lib/modules/component/**, packages/engine/src/binding/evaluator.ts
 - SCN-HIER: packages/site-cad/src/lib/modules/scenario/hierarchy.ts
+- SCN-PCK: features/SCN - Scene/PCK - Picking.md, packages/site-cad/src/help/picking.md
 - INT-SEL: (none)
 
 ## Notes
@@ -322,7 +325,8 @@ records:
       - packages/site-cad/src/lib/modules/component/**
       - packages/engine/src/binding/evaluator.ts
     run: 2026-06-24T10-30-00Z-12345 # provenance: the runId that produced this record
-    ticket: null                    # relative path to the gap ticket, when verdict is gap/partial
+    ticket: null                    # bare repo-relative path to the gap ticket, or null
+    no-ticket: unverified           # why a gap/partial has no ticket (see Finding routing); written only when set
     pinned: false                   # human reaffirmation; suppresses age/drift staleness until a hash changes
 ---
 
@@ -330,6 +334,21 @@ records:
 | Feature | Verdict | Freshness | Drift | Audited | Ticket |
 | ... |
 ```
+
+### Finding routing
+
+A `gap` or `partial` record carries exactly one of a `ticket:` path or a `no-ticket:` reason. Any record's `ticket:`, when non-null, is a string ending in `.md`, written bare (no backticks or trailing punctuation). Any record's `no-ticket:`, when present, is one of:
+
+| Value | Meaning | Who writes it |
+| --- | --- | --- |
+| `unverified` | Nothing observed is broken; part of the flow could not be exercised: a tool limitation, a missing secret or external service, or state the audit could not reach. The verdict note says which part and why. | audit agent |
+| `below-bar` | A real defect the project's filing rules say not to ticket. The note describes it. | audit agent |
+| `unbuilt` | The missing part is a capability the feature file's own `status:` already records as not implemented, so the feature inventory and the release burn-down already track it. | audit agent |
+| `unrecorded` | Audited before this field existed; the reason was not captured. | `coverage.mjs normalize-routing` only |
+
+`no-ticket:` is written only when set; absent means null. A `covered` or `n/a` record may keep a ticket path as history, but a `no-ticket:` on it means nothing: the runner never writes one there and the check ignores it.
+
+The runner reads both from the verdict note (`gap (ticket: <path>)` or `partial (no-ticket: <reason>)`, the grammar its audit prompt gives) and from that note alone: a re-audit that cites no ticket does not inherit the prior record's, since a finding recurring after its ticket completed needs a new one. It warns when a gap or partial verdict names neither. `node rubric/scripts/check-ledger.mjs [--root <dir>]` fails on any record breaking the rule, printing the `coverage.mjs route` command that fixes it; it is separate from `check-spec.mjs` so that an unrouted record never stops `run.mjs` or `coverage.mjs`. A ledger written before `no-ticket:` existed is retrofitted once with `coverage.mjs normalize-routing`, which normalizes every stored ticket and marks each gap or partial left with neither `no-ticket: unrecorded`; a re-audit replaces that marker.
 
 ### Hashes
 
@@ -363,6 +382,6 @@ Computed at read time by `coverage.mjs`, `run.mjs --stale-only`, and the UI, com
 
 - **Written** by the runner after each batch: for every non-blocked verdict it computes the two hashes, captures `audited-commit` (current HEAD) and `evidence` (from the run log), and upserts the record. A `blocked` verdict leaves any prior record untouched (the audit didn't actually run).
 - **Bootstrap** — with no ledger yet, every pair is `missing`; the first full sweep seeds the file. No migration needed.
-- **Manual overrides** (via `coverage.mjs`): `pin` reaffirms a record without re-auditing; `accept` rehashes a record to the current feature/aspect (clearing spec/criteria-staleness) while keeping the verdict — for cosmetic spec edits that don't warrant a re-audit.
+- **Manual overrides** (via `coverage.mjs`): `pin` reaffirms a record without re-auditing; `accept` rehashes a record to the current feature/aspect (clearing spec/criteria-staleness) while keeping the verdict — for cosmetic spec edits that don't warrant a re-audit; `route` sets a record's ticket path or `no-ticket:` reason ([Finding routing](#finding-routing)); `normalize-routing` retrofits a ledger written before `no-ticket:` existed.
 
 The ledger is committed, so audit history travels with the code and shows up in PR diffs — an audited feature whose evidence a PR touches visibly flips to drift-stale in review.

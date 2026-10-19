@@ -85,6 +85,7 @@
 		if (cell.unverifiable) parts.push('drift: unverifiable (rebase/squash/shallow)');
 		if (cell.pinned) parts.push('pinned');
 		if (cell.ticket) parts.push(`ticket: ${cell.ticket}`);
+		if (cell.noTicket) parts.push(`no-ticket: ${cell.noTicket}`);
 		return parts.join('\n');
 	}
 

@@ -16,6 +16,7 @@ export interface LedgerRecord {
 	evidence?: string[];
 	run?: string;
 	ticket?: string | null;
+	'no-ticket'?: string | null;
 	pinned?: boolean;
 	[key: string]: unknown;
 }

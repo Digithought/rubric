@@ -13,6 +13,8 @@
  *   coverage.mjs burn-down [--json]    the current release's outstanding spec work
  *   coverage.mjs pin <CODE> <aspect>   reaffirm a record (suppress drift/age)
  *   coverage.mjs accept <CODE> <aspect>  rehash to current spec/criteria, keep verdict
+ *   coverage.mjs route <CODE> <aspect> <ticket-path> | --no-ticket <reason>   route a finding by hand
+ *   coverage.mjs normalize-routing [<aspect>…]   retrofit a ledger written before no-ticket: existed
  *   coverage.mjs ship [<CODE>] [--dry-run]  strip a shipped release's target: tags
  *
  * Every form takes `--root <dir>`: the project root (default: the parent of rubric/).
@@ -30,6 +32,7 @@ import { filterFeatures, findFeature } from './lib/features.mjs';
 import { lastShippedRelease } from './lib/git.mjs';
 import { exitIfSpecInvalid, loadSpec, validateSpec } from './lib/validate.mjs';
 import { readLedger, writeLedger } from './lib/ledger.mjs';
+import { AGENT_REASONS, LEDGER_REASONS, applyRouting, needsRouting, normalizeTicketPath } from './lib/routing.mjs';
 import { applyShip, planShip, shipGuard } from './lib/ship.mjs';
 import { cachedFeatureReader, cellFor, featureFingerprintFor, resolveAspectHash } from './lib/coverage-cell.mjs';
 import { resolveStaleness, isStale } from './lib/freshness.mjs';
@@ -47,6 +50,10 @@ Usage:
   coverage.mjs burn-down [--json]                     the current release's outstanding work
   coverage.mjs pin <FEATURE_CODE> <aspect>            reaffirm a record
   coverage.mjs accept <FEATURE_CODE> <aspect>         rehash to current spec/criteria
+  coverage.mjs route <FEATURE_CODE> <aspect> <ticket-path>
+  coverage.mjs route <FEATURE_CODE> <aspect> --no-ticket <reason>
+                                                      route a gap/partial finding by hand
+  coverage.mjs normalize-routing [<aspect>…]          retrofit ledgers written before no-ticket:
   coverage.mjs ship [<CODE>] [--dry-run]              strip a shipped release's target: tags
 
 Options:
@@ -69,6 +76,17 @@ inventory. <CODE> defaults to the code named in the most recent commit subject
 (ship it with tess first) or that file does not exist. Run after tess's ship,
 before committing: CI's check:rubric-spec hints at this command when it finds
 a target: tag naming an unknown code that was just shipped.
+
+route sets a record's ticket path, or its no-ticket reason (one of
+${AGENT_REASONS.join(', ')}), replacing whichever it had; check-ledger.mjs
+fails a gap or partial with neither. Run it after an audit run finishes: a
+run in progress rewrites the ledger from its own copy and would overwrite
+the change.
+
+normalize-routing rewrites every stored ticket value to a bare .md path (or
+null), drops a no-ticket value that is not a reason, and marks each gap or
+partial left with neither no-ticket: unrecorded. It defaults to every active
+aspect with verdicts and is safe to re-run.
 `;
 
 // Single-char freshness symbols for the matrix.
@@ -85,7 +103,7 @@ async function main() {
 	const aspectsDir = join(repoRoot, 'aspects');
 
 	const sub = argv[0] && !argv[0].startsWith('-') ? argv[0] : null;
-	if (sub && !['pin', 'accept', 'burn-down', 'ship'].includes(sub)) { console.error(`Unknown subcommand: ${sub}`); console.error(HELP); process.exit(2); }
+	if (sub && !['pin', 'accept', 'route', 'normalize-routing', 'burn-down', 'ship'].includes(sub)) { console.error(`Unknown subcommand: ${sub}`); console.error(HELP); process.exit(2); }
 
 	// ship runs before spec validation: a target: tag naming the just-shipped code is
 	// exactly what it is here to fix, so the spec is expected to be invalid until it runs.
@@ -100,6 +118,14 @@ async function main() {
 
 	if (sub === 'burn-down') {
 		await printBurnDown(argv.slice(1), { aspectsDir, repoRoot, allAspects, allFeatures, releases });
+		return;
+	}
+	if (sub === 'route') {
+		await route(argv.slice(1), { aspectsDir, allAspects });
+		return;
+	}
+	if (sub === 'normalize-routing') {
+		await normalizeRouting(argv.slice(1), { aspectsDir, allAspects });
 		return;
 	}
 	if (sub) {
@@ -154,8 +180,8 @@ async function warnIgnoredParentLedgers(aspects, aspectsDir) {
 
 /**
  * For each aspect, in column order: load its ledger, resolve staleness +
- * aspect-hash, and compute a cell (`cellFor`, with the record's gap `ticket`)
- * for every applicable feature. Returns a structure the renderers walk.
+ * aspect-hash, and compute a cell (`cellFor`, with the record's `ticket` and
+ * `no-ticket` routing) for every applicable feature. Returns a structure the renderers walk.
  */
 async function buildMatrix(aspects, allFeatures, { aspectsDir, repoRoot, releases }) {
 	const readText = cachedFeatureReader();
@@ -168,7 +194,11 @@ async function buildMatrix(aspects, allFeatures, { aspectsDir, repoRoot, release
 		const cells = new Map();   // code → cell
 		for (const feature of filterFeatures(allFeatures, aspect)) {
 			const record = records[feature.code] ?? null;
-			cells.set(feature.code, { ...cellFor({ feature, aspect, record, aspectHash, staleness, releases, repoRoot, readText }), ticket: record?.ticket ?? null });
+			cells.set(feature.code, {
+				...cellFor({ feature, aspect, record, aspectHash, staleness, releases, repoRoot, readText }),
+				ticket: record?.ticket ?? null,
+				noTicket: record?.['no-ticket'] ?? null,
+			});
 			codeSet.add(feature.code);
 		}
 		columns.push({ aspect: aspect.name, label: aspectLabel(aspect), parent: aspect.parent?.name ?? null, cells });
@@ -314,7 +344,28 @@ function printShipPlan(plan, code, repoRoot) {
 	}
 }
 
-// ── Manual overrides: pin / accept ───────────────────────────────────────────
+// ── Manual overrides: pin / accept / route ───────────────────────────────────
+
+/**
+ * The record `kind` edits, with its ledger: exits 1 when the aspect is a parent
+ * with children (its ledger is ignored) or has no record for `code`.
+ */
+async function recordFor(kind, code, aspectName, { aspectsDir, allAspects }) {
+	const aspect = allAspects.find(a => a.name === aspectName);
+	if (aspect && !hasVerdicts(aspect)) exitParentLedger(aspect, `${kind} the record under one of its children instead.`);
+	const ledger = await readLedger(aspectsDir, aspectName);
+	const record = ledger.records[code];
+	if (!record) {
+		console.error(`No ledger record for ${code} in aspect "${aspectName}". Nothing to ${kind}.`);
+		process.exit(1);
+	}
+	return { aspect, ledger, record };
+}
+
+function exitParentLedger(aspect, instead) {
+	console.error(`Aspect "${aspect.name}" has children (${aspect.children.join(', ')}) and no verdicts of its own — its ledger is ignored. ${instead}`);
+	process.exit(1);
+}
 
 async function override(kind, args, { aspectsDir, allAspects, allFeatures, releases }) {
 	const [code, aspectName] = args;
@@ -322,17 +373,7 @@ async function override(kind, args, { aspectsDir, allAspects, allFeatures, relea
 		console.error(`Usage: coverage.mjs ${kind} <FEATURE_CODE> <aspect>`);
 		process.exit(2);
 	}
-	const aspect = allAspects.find(a => a.name === aspectName);
-	if (aspect && !hasVerdicts(aspect)) {
-		console.error(`Aspect "${aspectName}" has children (${aspect.children.join(', ')}) and no verdicts of its own — its ledger is ignored. ${kind} the record under one of its children instead.`);
-		process.exit(1);
-	}
-	const ledger = await readLedger(aspectsDir, aspectName);
-	const record = ledger.records[code];
-	if (!record) {
-		console.error(`No ledger record for ${code} in aspect "${aspectName}". Nothing to ${kind}.`);
-		process.exit(1);
-	}
+	const { aspect, ledger, record } = await recordFor(kind, code, aspectName, { aspectsDir, allAspects });
 
 	if (kind === 'pin') {
 		record.pinned = true;
@@ -352,6 +393,71 @@ async function override(kind, args, { aspectsDir, allAspects, allFeatures, relea
 	record['aspect-hash'] = await resolveAspectHash(aspect);
 	await writeLedger(aspectsDir, aspectName, ledger);
 	console.log(`Accepted ${code} @ ${aspectName} (verdict ${record.verdict}). Rehashed to current spec + criteria; drift unchanged.`);
+}
+
+/** `route <CODE> <aspect> <ticket-path>` or `route <CODE> <aspect> --no-ticket <reason>`: replace the record's routing. */
+async function route(args, ctx) {
+	const [code, aspectName, ...rest] = args;
+	const usage = 'Usage: coverage.mjs route <FEATURE_CODE> <aspect> <ticket-path> | --no-ticket <reason>';
+	let routing;
+	if (code && aspectName && rest.length === 2 && rest[0] === '--no-ticket') {
+		if (!AGENT_REASONS.includes(rest[1])) {
+			console.error(`"${rest[1]}" is not a no-ticket reason; use one of ${AGENT_REASONS.join(', ')}.`);
+			process.exit(2);
+		}
+		routing = { ticket: null, noTicket: rest[1] };
+	} else if (code && aspectName && rest.length === 1 && !rest[0].startsWith('-')) {
+		const ticket = normalizeTicketPath(rest[0]);
+		if (!ticket) {
+			console.error(`"${rest[0]}" is not a repo-relative .md ticket path.`);
+			process.exit(1);
+		}
+		routing = { ticket, noTicket: null };
+	} else {
+		console.error(usage);
+		process.exit(2);
+	}
+
+	const { ledger, record } = await recordFor('route', code, aspectName, ctx);
+	applyRouting(record, routing);
+	await writeLedger(ctx.aspectsDir, aspectName, ledger);
+	console.log(`Routed ${code} @ ${aspectName} (verdict ${record.verdict}) to ${routing.ticket ?? `no-ticket: ${routing.noTicket}`}.`);
+}
+
+/**
+ * The one-time retrofit of ledgers written before `no-ticket:` existed, safe to
+ * re-run: each stored ticket becomes a bare `.md` path or null, a `no-ticket`
+ * that is not a ledger reason is dropped, and a gap or partial left with
+ * neither gets `no-ticket: unrecorded`. A ledger is rewritten only when
+ * something changed.
+ */
+async function normalizeRouting(args, { aspectsDir, allAspects }) {
+	const option = args.find(a => a.startsWith('-'));
+	if (option) { console.error(`Unknown option: ${option}`); console.error(HELP); process.exit(2); }
+	for (const name of args) {
+		const aspect = allAspects.find(a => a.name === name);
+		if (!aspect) { console.error(`Aspect "${name}" is not active.`); process.exit(1); }
+		if (!hasVerdicts(aspect)) exitParentLedger(aspect, 'Name one of its children instead.');
+	}
+	const names = args.length ? args : allAspects.filter(hasVerdicts).map(a => a.name);
+
+	for (const name of names) {
+		const ledger = await readLedger(aspectsDir, name);
+		const changed = { rewritten: 0, dropped: 0, unrecorded: 0 };
+		for (const record of Object.values(ledger.records)) {
+			if (!record || typeof record !== 'object') continue;
+			const stored = record.ticket ?? null;
+			const ticket = normalizeTicketPath(stored);
+			if (ticket !== stored) changed.rewritten++;
+			let noTicket = record['no-ticket'] ?? null;
+			if (noTicket !== null && !LEDGER_REASONS.includes(noTicket)) { noTicket = null; changed.dropped++; }
+			if (needsRouting(record.verdict) && !ticket && !noTicket) { noTicket = 'unrecorded'; changed.unrecorded++; }
+			applyRouting(record, { ticket, noTicket });
+		}
+		const total = changed.rewritten + changed.dropped + changed.unrecorded;
+		if (total) await writeLedger(aspectsDir, name, ledger);
+		console.log(`${name}: ${total ? `${changed.rewritten} ticket value(s) rewritten, ${changed.dropped} invalid no-ticket dropped, ${changed.unrecorded} marked no-ticket: unrecorded` : 'unchanged'}`);
+	}
 }
 
 main().catch(err => {

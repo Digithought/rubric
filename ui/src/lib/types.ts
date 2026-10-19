@@ -99,6 +99,7 @@ export interface CoverageCell {
 	unverifiable?: boolean;      // drift couldn't be computed (rebase/squash/shallow)
 	audited?: string;            // ISO datetime of the audit
 	ticket?: string | null;      // relative path to the gap ticket, when set
+	noTicket?: string | null;    // why a gap/partial has no ticket (schema.md § Finding routing)
 	pinned?: boolean;            // human reaffirmation
 }
 

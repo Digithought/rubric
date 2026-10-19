@@ -33,7 +33,7 @@ The reference runner (`rubric/scripts/run.mjs`) dispatches **sequentially**, whi
 
 Alongside the manifest, the runner maintains a durable, git-committed **coverage ledger** per aspect, `aspects/<name>/coverage.md` (schema in [`schema.md`](../schema.md)). The manifest is the ephemeral per-run blackboard; the ledger is the cumulative record of what has been audited and whether it still holds.
 
-After a batch completes, for each **non-blocked** verdict the runner upserts a ledger record: the verdict, `audited` timestamp, current `audited-commit` (git HEAD), the **feature-hash** and **aspect-hash** (see schema), the **evidence** paths from the run log, the `run` id, and any gap `ticket`. A `blocked` verdict leaves the prior record untouched — the audit didn't actually run. The runner is the sole writer, exactly as with the manifest. A run for a later release writes no records (see "Release scoping").
+After a batch completes, for each **non-blocked** verdict the runner upserts a ledger record: the verdict, `audited` timestamp, current `audited-commit` (git HEAD), the **feature-hash** and **aspect-hash** (see schema), the **evidence** paths from the run log, the `run` id, and the finding's routing (`ticket` or `no-ticket`, see [`schema.md`](../schema.md#finding-routing)). A `blocked` verdict leaves the prior record untouched — the audit didn't actually run. The runner is the sole writer, exactly as with the manifest. A run for a later release writes no records (see "Release scoping").
 
 ## Post-batch guard
 

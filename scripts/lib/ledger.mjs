@@ -136,7 +136,7 @@ function renderBody(aspectName, records, snapshot) {
 		const freshness = snap.freshness ?? '—';
 		const drift = snap.drift ?? '—';
 		const audited = r.audited ? String(r.audited) : '—';
-		const ticket = r.ticket ? String(r.ticket) : '—';
+		const ticket = r.ticket ? String(r.ticket) : (r['no-ticket'] ? `no-ticket: ${r['no-ticket']}` : '—');
 		lines.push(`| ${code} | ${r.verdict ?? '—'} | ${freshness} | ${drift} | ${audited} | ${ticket} |`);
 	}
 	lines.push('');
