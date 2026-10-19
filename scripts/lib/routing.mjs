@@ -2,7 +2,7 @@
  * Finding routing — whether a `gap`/`partial` ledger record names the ticket
  * that carries it or says why it has none (schema.md § Finding routing).
  *
- * The runner reads both from the free-text verdict note (`parseRouting`), the
+ * The runner reads both from the free-text verdict line (`parseRouting`), the
  * check reads them back from the ledger (`routingProblems`), and `coverage.mjs`
  * sets them by hand (`applyRouting`).
  */
@@ -14,8 +14,8 @@ export const LEDGER_REASONS = [...AGENT_REASONS, 'unrecorded'];
 
 const ROUTED_VERDICTS = new Set(['gap', 'partial']);
 // The lookbehind keeps `no-ticket: unverified` from reading as `ticket: unverified`.
-const TICKET_RE = /(?<![\w-])ticket:\s*([^\s)]+)/i;
-const NO_TICKET_RE = /(?<![\w-])no-ticket:\s*([a-z-]+)/i;
+const TICKET_RE = /(?<![\w-])ticket:\s*([^\s)]+)/gi;
+const NO_TICKET_RE = /(?<![\w-])no-ticket:\s*([a-z-]+)/gi;
 
 /** A verdict whose record must carry a ticket path or a `no-ticket:` reason. */
 export function needsRouting(verdict) {
@@ -33,13 +33,25 @@ export function normalizeTicketPath(raw) {
 	return s.endsWith('.md') ? s : null;
 }
 
-/** `{ ticket, noTicket }` from one verdict note. A filed ticket wins over a reason. */
-export function parseRouting(verdict, note) {
-	const text = String(note ?? '');
-	const ticket = normalizeTicketPath(text.match(TICKET_RE)?.[1]);
+/**
+ * `{ ticket, noTicket }` from one verdict's text. The first `ticket:` that is a
+ * `.md` path wins over any reason, so prose such as "No ticket: below the bar"
+ * ahead of the routing does not hide it.
+ */
+export function parseRouting(verdict, text) {
+	const s = String(text ?? '');
+	const ticket = firstMatch(s, TICKET_RE, normalizeTicketPath);
 	if (ticket || !needsRouting(verdict)) return { ticket, noTicket: null };
-	const reason = text.match(NO_TICKET_RE)?.[1].toLowerCase();
-	return { ticket: null, noTicket: AGENT_REASONS.includes(reason) ? reason : null };
+	const noTicket = firstMatch(s, NO_TICKET_RE, raw => (AGENT_REASONS.includes(raw.toLowerCase()) ? raw.toLowerCase() : null));
+	return { ticket: null, noTicket };
+}
+
+function firstMatch(text, re, accept) {
+	for (const m of text.matchAll(re)) {
+		const value = accept(m[1]);
+		if (value) return value;
+	}
+	return null;
 }
 
 /**

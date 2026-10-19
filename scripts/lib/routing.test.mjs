@@ -3,7 +3,7 @@ import { test } from 'node:test';
 
 import { parseRouting, routingProblems } from './routing.mjs';
 
-// Contract: schema.md § Coverage-ledger schema, Finding routing — a gap or partial record carries exactly one
+// Contract: schema.md § Finding routing — a gap or partial record carries exactly one
 // of a ticket path or a no-ticket reason; a ticket is a bare .md path; a reason is one of the listed values.
 
 test('parseRouting: a note yields a bare ticket path or an audit reason, never both, and never a reason on a covered verdict', () => {
@@ -15,6 +15,7 @@ test('parseRouting: a note yields a bare ticket path or an audit reason, never b
 		['partial', 'no-ticket: env', { ticket: null, noTicket: null }],
 		['partial', 'no-ticket: unrecorded', { ticket: null, noTicket: null }],
 		['gap', 'no-ticket: unbuilt; ticket: tickets/plan/b.md', { ticket: 'tickets/plan/b.md', noTicket: null }],
+		['partial', '(Op-only) — No ticket: below the bar. (ticket: tickets/plan/c.md)', { ticket: 'tickets/plan/c.md', noTicket: null }],
 		['covered', 'no-ticket: below-bar', { ticket: null, noTicket: null }],
 	];
 	for (const [verdict, note, expected] of cases) {

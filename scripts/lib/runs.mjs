@@ -76,6 +76,8 @@ function parseVerdicts(body) {
 			code: m[1],
 			verdict: m[2].toLowerCase().replace('n/a', 'n/a'),
 			note: (m[4] || m[5] || '').trim(),
+			// Everything after the verdict word: a routing may follow a non-routing parenthetical, e.g. `partial (Op-only) (ticket: …)`.
+			detail: [m[3], m[5]].filter(Boolean).join(' ').trim(),
 		});
 	}
 	return out;

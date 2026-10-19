@@ -439,7 +439,7 @@ async function guardBatchEdits({ repoRoot, aspect, features, beforeAudit }) {
  * is fingerprinted from its file as the audit left it. `pinned` is preserved
  * from any prior record; a `blocked` verdict is skipped so it never clobbers a
  * real audit. The routing (`ticket` / `no-ticket`) comes from this verdict's
- * note alone: a prior record's ticket is not carried forward, because when the
+ * line alone: a prior record's ticket is not carried forward, because when the
  * finding recurs after that ticket completed, re-attaching it would hide a
  * regression that needs a new one.
  */
@@ -458,7 +458,7 @@ async function updateLedger({ aspectsDir, repoRoot, releases, aspect, aspectHash
 		const feat = byCode.get(v.code);
 		if (!feat) continue;                        // code not in this batch (invented / mistyped)
 		const existing = ledger.records[v.code];
-		const { ticket, noTicket } = parseRouting(v.verdict, v.note);
+		const { ticket, noTicket } = parseRouting(v.verdict, v.detail);
 		upsertRecord(ledger, v.code, {
 			verdict: v.verdict,
 			audited: finishedAt,
