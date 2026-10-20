@@ -42,7 +42,9 @@ The cardinal rule in [`root.md`](root.md) — a ticket that modifies a feature u
 
 If the change *adds* a user-facing capability, the bullet goes in now. If it removes one, the bullet comes out now.
 
-The same holds for architecture: a change that stops doing what a concern-document section describes has made the section false unless the section was changed first on purpose. Correct it in this pass. Audits will also find the difference ([`principles.md`](principles.md) § *Architecture reaches the code through audits*), but later and at full cost.
+The same holds for architecture: a change that stops doing what a concern-document section describes has made the section false unless the section was changed first on purpose. Correct it in this pass.
+
+Which way to reconcile depends on how explicit the falsified line was ([`principles.md`](principles.md) § *Rubric anchors*, "The spec's weight follows its explicitness"). A loose line is updated to describe what the code now does. An explicit one — a number, a named behaviour, a stated reason — that the ticket did not explicitly set out to change marks the diff as a likely regression: restore the code, or block with a spec diff proposal. The same goes for a contract test whose expected value the diff edited. Audits will also find the difference ([`principles.md`](principles.md) § *Architecture reaches the code through audits*), but later and at full cost.
 
 ### 5. Optionally, run the cheap aspect check
 

@@ -46,6 +46,8 @@ Convergence between spec and code happens at ticket time, not document time. Pla
 
 A blocked ticket is a spec diff proposal, never an open question.
 
+**The spec's weight follows its explicitness.** When code, a test or another artifact disagrees with the spec, read the disagreement against how specific the spec line is. A loose or silent line yields to a reasonable implementation, and the spec is sharpened to say what was built. An explicit, detailed line — a number, a named behaviour, a stated reason — was most likely decided, so pressure against it (a red test, a stack trace, a benchmark) is first evidence of a defect elsewhere, to be looked for before the line is doubted. Changing an explicit line takes a ticket that is equally explicit about it: one that names the anchor, quotes the line, and gives the new text and the reason. A ticket that needs the change only incidentally fixes the real cause instead, or blocks with the proposed spec diff and the evidence. A test that names an explicit spec line asserts the spec's value as a literal, not through the constant under test, so that moving the constant turns it red and the change is made in the open.
+
 ## Current release assumption
 
 Release information is an exception, not an annotation. The ticket system keeps an ordered list of release codes (`tickets/releases.md` under tess); the first entry is the **current** release. Anything not explicitly deferred — a feature, a capability, a ticket — is due in the current release.
