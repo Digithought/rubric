@@ -21,6 +21,8 @@ test('parseRouting: a note yields a bare ticket path or an audit reason, never b
 		['partial', '(tickets: tickets/fix/a.md, tickets/plan/b.md).', { ticket: 'tickets/fix/a.md', noTicket: null }],
 		['partial', '(tickets: `tickets/plan/a.md`, `tickets/fix/b.md`)', { ticket: 'tickets/plan/a.md', noTicket: null }],
 		['partial', '(tickets: see note, tickets/fix/b.md)', { ticket: null, noTicket: null }],
+		// regression: an unspaced list recorded `a.md,b.md` as one path, which still passes the `.md` check
+		['partial', '(tickets: tickets/fix/a.md,`tickets/plan/b.md`)', { ticket: 'tickets/fix/a.md', noTicket: null }],
 	];
 	for (const [verdict, note, expected] of cases) {
 		assert.deepEqual(parseRouting(verdict, note), expected, `${verdict} (${note})`);

@@ -14,8 +14,9 @@ export const LEDGER_REASONS = [...AGENT_REASONS, 'unrecorded'];
 
 const ROUTED_VERDICTS = new Set(['gap', 'partial']);
 // The lookbehind keeps `no-ticket: unverified` from reading as `ticket: unverified`.
-// `tickets: a.md, b.md` captures only its first entry, so a list whose first entry is prose reads as unrouted.
-const TICKET_RE = /(?<![\w-])tickets?:\s*([^\s)]+)/gi;
+// `tickets: a.md, b.md` captures only its first entry, so a list whose first entry is prose reads as unrouted;
+// the capture stops at `,`/`;` so an unspaced `a.md,b.md` does not record as one bogus `.md` path.
+const TICKET_RE = /(?<![\w-])tickets?:\s*([^\s),;]+)/gi;
 const NO_TICKET_RE = /(?<![\w-])no-ticket:\s*([a-z-]+)/gi;
 
 /** A verdict whose record must carry a ticket path or a `no-ticket:` reason. */
