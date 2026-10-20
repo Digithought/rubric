@@ -17,6 +17,10 @@ test('parseRouting: a note yields a bare ticket path or an audit reason, never b
 		['gap', 'no-ticket: unbuilt; ticket: tickets/plan/b.md', { ticket: 'tickets/plan/b.md', noTicket: null }],
 		['partial', '(Op-only) — No ticket: below the bar. (ticket: tickets/plan/c.md)', { ticket: 'tickets/plan/c.md', noTicket: null }],
 		['covered', 'no-ticket: below-bar', { ticket: null, noTicket: null }],
+		// regression: plural `tickets:` lists were read as unrouted (rubric-routing-reads-plural-tickets)
+		['partial', '(tickets: tickets/fix/a.md, tickets/plan/b.md).', { ticket: 'tickets/fix/a.md', noTicket: null }],
+		['partial', '(tickets: `tickets/plan/a.md`, `tickets/fix/b.md`)', { ticket: 'tickets/plan/a.md', noTicket: null }],
+		['partial', '(tickets: see note, tickets/fix/b.md)', { ticket: null, noTicket: null }],
 	];
 	for (const [verdict, note, expected] of cases) {
 		assert.deepEqual(parseRouting(verdict, note), expected, `${verdict} (${note})`);
