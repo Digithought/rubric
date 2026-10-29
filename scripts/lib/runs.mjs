@@ -61,25 +61,47 @@ export function countVerdicts(verdicts) {
 	return counts;
 }
 
-function parseVerdicts(body) {
-	// Find the "## Verdicts" section then read until the next heading.
+/** Match one verdict bullet's full text (continuation lines already folded in). */
+function parseVerdictBullet(text) {
+	const m = text.match(VERDICT_RE);
+	if (!m) return null;
+	return {
+		code: m[1],
+		verdict: m[2].toLowerCase(),
+		note: (m[4] || m[5] || '').trim(),
+		// Everything after the verdict word: a routing may follow a non-routing parenthetical, e.g. `partial (Op-only) (ticket: …)`.
+		detail: [m[3], m[5]].filter(Boolean).join(' ').trim(),
+	};
+}
+
+/**
+ * Parse the `## Verdicts` section. Like `parseEvidence`, a bullet's indented
+ * continuation lines are folded into it before matching: agents hard-wrap long
+ * verdicts, and a break right after `(ticket:` left the path on a line nobody read,
+ * so a routed finding reached the ledger as unrouted.
+ */
+export function parseVerdicts(body) {
 	const lines = body.split(/\r?\n/);
 	const out = [];
 	let inSection = false;
+	let buf = null;   // text of the bullet being accumulated
+
+	function flush() {
+		if (buf == null) return;
+		const v = parseVerdictBullet(buf);
+		if (v) out.push(v);
+		buf = null;
+	}
+
 	for (const line of lines) {
 		if (/^##\s+verdicts\b/i.test(line)) { inSection = true; continue; }
 		if (inSection && /^##\s+/.test(line)) break;
 		if (!inSection) continue;
-		const m = line.match(VERDICT_RE);
-		if (!m) continue;
-		out.push({
-			code: m[1],
-			verdict: m[2].toLowerCase().replace('n/a', 'n/a'),
-			note: (m[4] || m[5] || '').trim(),
-			// Everything after the verdict word: a routing may follow a non-routing parenthetical, e.g. `partial (Op-only) (ticket: …)`.
-			detail: [m[3], m[5]].filter(Boolean).join(' ').trim(),
-		});
+		if (/^\s*-\s/.test(line)) { flush(); buf = line; continue; }
+		if (buf != null && /^\s+\S/.test(line)) { buf += ' ' + line.trim(); continue; }
+		flush();
 	}
+	flush();
 	return out;
 }
 

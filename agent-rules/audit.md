@@ -53,7 +53,7 @@ Write a single run log at the path the runner gives you (within the run director
 
 - The aspect, batch, runner identifier (`runId`), and start/finish times.
 - A `blockers:` front-matter list (empty if none) — see "Reporting blockers" above.
-- One verdict line per feature: `covered` / `gap (ticket: <path>)` / `partial (ticket: <path>)` / `gap (no-ticket: <reason>)` / `partial (no-ticket: <reason>)` / `n/a (<reason>)` / `blocked (<blocker-id>)`. Every gap and partial names its ticket's bare repo-relative path, or a reason it has none; a finding split across several tickets lists them as `tickets: <path>, <path>`, and only the first is recorded; the reasons and the rule are in [`schema.md`](../schema.md#finding-routing).
+- One verdict line per feature, unwrapped: `covered` / `gap (ticket: <path>)` / `partial (ticket: <path>)` / `gap (no-ticket: <reason>)` / `partial (no-ticket: <reason>)` / `n/a (<reason>)` / `blocked (<blocker-id>)`. Every gap and partial names its ticket's bare repo-relative path, or a reason it has none; a finding split across several tickets lists them as `tickets: <path>, <path>`, and only the first is recorded; the reasons and the rule are in [`schema.md`](../schema.md#finding-routing).
 - An `## Evidence` section: one bullet `<CODE>: <comma-separated paths>` per feature (globs allowed, repo-relative, forward slash), or `<CODE>: (none)`. Feeds drift-based staleness — see step 6. Schema in [`schema.md`](../schema.md).
 - Free-form notes for anything that didn't fit neatly — surprising findings, follow-ups, ambiguity.
 

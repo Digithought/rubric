@@ -99,7 +99,7 @@ blockers: []   # see "Reporting blockers" below; leave [] if none
 
 Below the front-matter, include:
 
-1. A \`## Verdicts\` section with one bullet per feature in the form:
+1. A \`## Verdicts\` section with one bullet per feature, each written as one unwrapped line, in the form:
    - \`<CODE> — covered\` (with a short evidence note)
    - \`<CODE> — gap (ticket: <repo-relative path>)\` / \`<CODE> — partial (ticket: <repo-relative path>)\`, followed by the scope of the partial
    - \`<CODE> — gap (no-ticket: <reason>)\` / \`<CODE> — partial (no-ticket: <reason>)\`, followed by a sentence saying which part and why
